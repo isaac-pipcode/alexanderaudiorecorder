@@ -42,7 +42,10 @@ class JobRequest(BaseModel):
 
 
 def _public_base() -> str:
-    return os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
+    # Render expõe RENDER_EXTERNAL_URL automaticamente; usamos como fallback
+    # para não precisar definir PUBLIC_BASE_URL à mão.
+    base = os.environ.get("PUBLIC_BASE_URL") or os.environ.get("RENDER_EXTERNAL_URL", "")
+    return base.rstrip("/")
 
 
 def _run_job(job_id: str, req: JobRequest):
