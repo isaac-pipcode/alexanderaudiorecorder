@@ -23,7 +23,25 @@ docker run -p 8000:8000 \
   aar-backend
 ```
 
-## Deploy (Railway / Fly.io / Render)
+## Deploy no Render (recomendado — via Blueprint)
+
+Há um `render.yaml` na raiz do repositório que já configura tudo.
+
+1. No Render: **New > Blueprint** e selecione o repositório `alexanderaudiorecorder`.
+2. O Render lê o `render.yaml`, cria o serviço Docker apontando para `backend/` e
+   define `ALLOWED_ORIGINS`. Clique em **Apply**.
+3. Aguarde o build. Teste `https://SEU-SERVICO.onrender.com/health` → `{"ok": true}`.
+4. No Vercel, defina `NEXT_PUBLIC_YOUTUBE_API_URL` com essa URL e faça redeploy.
+
+> O backend descobre a própria URL via `RENDER_EXTERNAL_URL`, então não é preciso
+> definir `PUBLIC_BASE_URL` no Render.
+
+### Deploy manual (sem Blueprint)
+
+**New > Web Service** > conecte o repo > **Runtime: Docker** > **Root Directory: `backend`**.
+Defina `ALLOWED_ORIGINS` com a URL do Vercel.
+
+## Deploy em outros hosts (Railway / Fly.io)
 
 1. Aponte o serviço para a pasta `backend/` (usa o `Dockerfile`).
 2. Variáveis de ambiente:
