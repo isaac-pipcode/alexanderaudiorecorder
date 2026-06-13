@@ -7,14 +7,45 @@ Refatorado do script CLI original para uso como serviço:
 """
 
 import json
+import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
 class SplitterError(Exception):
     pass
+
+
+def _cookie_args() -> list[str]:
+    """
+    Cookies do YouTube ajudam a contornar o bloqueio de IPs de datacenter (HTTP 429).
+    Defina no host UMA das opções:
+      - YT_COOKIES_FILE: caminho para um cookies.txt (formato Netscape)
+      - YT_COOKIES:      o conteúdo do cookies.txt direto na variável
+    """
+    path = os.environ.get("YT_COOKIES_FILE")
+    content = os.environ.get("YT_COOKIES")
+    if not path and content:
+        path = os.path.join(tempfile.gettempdir(), "yt_cookies.txt")
+        if not os.path.isfile(path):
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(content)
+    if path and os.path.isfile(path):
+        return ["--cookies", path]
+    return []
+
+
+def _common_opts() -> list[str]:
+    """Opções compartilhadas para tornar a extração mais resiliente."""
+    return [
+        "--retries", "5",
+        "--extractor-retries", "3",
+        "--sleep-requests", "1",
+        *_cookie_args(),
+    ]
 
 
 def sanitize(name: str) -> str:
@@ -27,7 +58,7 @@ def _ytdlp_cmd() -> list[str]:
 
 def get_video_info(url: str) -> dict:
     result = subprocess.run(
-        [*_ytdlp_cmd(), "--dump-json", "--no-playlist", url],
+        [*_ytdlp_cmd(), "--dump-json", "--no-playlist", *_common_opts(), url],
         capture_output=True, text=True, encoding="utf-8",
     )
     if result.returncode != 0:
@@ -40,6 +71,7 @@ def download_audio(url: str, output_path: Path) -> Path:
     result = subprocess.run([
         *_ytdlp_cmd(), "--no-playlist",
         "-x", "--audio-format", "mp3", "--audio-quality", "0",
+        *_common_opts(),
         "-o", template, url,
     ], capture_output=True, text=True, encoding="utf-8")
     if result.returncode != 0:

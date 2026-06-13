@@ -1,5 +1,8 @@
 FROM python:3.12-slim
 
+# Deno: runtime JS exigido pelo yt-dlp para extrair o YouTube (EJS).
+COPY --from=denoland/deno:bin /deno /usr/local/bin/deno
+
 # ffmpeg + ffprobe são necessários para cortar/converter o áudio.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg \
