@@ -56,6 +56,24 @@ Defina `ALLOWED_ORIGINS` com a URL do Vercel.
 - `GET /files/{id}/...` → download dos MP3s
 - `GET /health`
 
+## Contornar bloqueio do YouTube (HTTP 429 / "confirm you're not a bot")
+
+IPs de datacenter (Render, Railway, etc.) costumam ser bloqueados pelo YouTube.
+A solução confiável é fornecer **cookies** de uma conta logada:
+
+1. No navegador (logado no YouTube), instale uma extensão tipo
+   "Get cookies.txt LOCALLY" e exporte os cookies de `youtube.com` no formato Netscape.
+2. No Render: serviço → **Environment** → adicione a variável:
+   - `YT_COOKIES` = cole **todo o conteúdo** do arquivo cookies.txt
+   - (ou `YT_COOKIES_FILE` com o caminho de um arquivo montado)
+3. Salve — o Render redeploya e o yt-dlp passa a usar os cookies.
+
+> Use uma conta secundária/descartável: cookies dão acesso à sessão do YouTube.
+> Eles também expiram, então pode ser preciso reexportar de tempos em tempos.
+
+O backend também envia `--retries`, `--extractor-retries` e `--sleep-requests`
+automaticamente para reduzir os 429.
+
 ## Notas para produção
 
 - Os jobs ficam **em memória**: reiniciar o serviço perde o histórico. Para produção,
