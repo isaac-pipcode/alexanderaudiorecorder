@@ -15,7 +15,7 @@ const marker = Permanent_Marker({
 });
 
 export const metadata: Metadata = {
-  title: "Alexander Audio Recorder",
+  title: "Alexander Audio Tools",
   description: "Grave fitas do Spotify e corte fitas do YouTube. Som analógico, jeitão dos anos 80.",
 };
 
@@ -30,7 +30,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </div>
         <div className="mx-auto max-w-3xl px-4 py-8">
           <header className="mb-8 text-center">
-            <h1 className="title-stamp">ALEXANDER&nbsp;AUDIO&nbsp;RECORDER</h1>
+            <h1 className="title-stamp">ALEXANDER&nbsp;AUDIO&nbsp;TOOLS</h1>
             <p className="mt-2 text-sm tracking-widest text-ink/70">
               ✦ HI-FI STEREO CASSETTE &nbsp;·&nbsp; SPLICE &amp; RECORD &nbsp;·&nbsp; MODELO 1986 ✦
             </p>
