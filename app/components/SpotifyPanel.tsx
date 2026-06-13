@@ -31,7 +31,6 @@ export default function SpotifyPanel() {
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  // Refs para o estado mutável do loop de gravação.
   const streamRef = useRef<MediaStream | null>(null);
   const mediaRecRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
@@ -42,15 +41,10 @@ export default function SpotifyPanel() {
     handleRedirectCallback().finally(() => setAuthed(isLoggedIn()));
   }, []);
 
-  // Salva a faixa que estava sendo gravada com os metadados certos.
   const flushCurrent = useCallback(() => {
     const rec = mediaRecRef.current;
-    const track = currentTrackRef.current;
-    if (rec && rec.state !== "inactive") {
-      rec.stop(); // dispara onstop, que monta o Blob
-    }
+    if (rec && rec.state !== "inactive") rec.stop();
     currentTrackRef.current = null;
-    void track;
   }, []);
 
   const startSegmentRecorder = useCallback((stream: MediaStream, track: Track) => {
@@ -87,17 +81,13 @@ export default function SpotifyPanel() {
     if (!stream) return;
 
     if (!track || !track.isPlaying) {
-      // Pausado/parado: fecha a faixa atual (igual ao script original).
       if (mediaRecRef.current?.state === "recording") flushCurrent();
       return;
     }
 
     const prev = currentTrackRef.current;
     if (!prev || prev.id !== track.id) {
-      // Trocou de faixa: fecha a anterior e abre a nova.
-      if (mediaRecRef.current?.state === "recording") {
-        mediaRecRef.current.stop();
-      }
+      if (mediaRecRef.current?.state === "recording") mediaRecRef.current.stop();
       startSegmentRecorder(stream, track);
     }
   }, [flushCurrent, startSegmentRecorder]);
@@ -117,21 +107,14 @@ export default function SpotifyPanel() {
         );
         return;
       }
-      // Não precisamos do vídeo — economiza recursos.
       stream.getVideoTracks().forEach((t) => t.stop());
-
       streamRef.current = stream;
       setRecording(true);
-
-      // Se o usuário encerrar o compartilhamento pela barra do navegador.
       stream.getAudioTracks()[0].onended = () => stop();
-
       await tick();
       pollRef.current = setInterval(tick, POLL_MS);
     } catch (e) {
-      setError(
-        e instanceof Error ? e.message : "Falha ao iniciar a captura de áudio."
-      );
+      setError(e instanceof Error ? e.message : "Falha ao iniciar a captura de áudio.");
     }
   }, [tick]);
 
@@ -170,111 +153,119 @@ export default function SpotifyPanel() {
 
   if (!isConfigured()) {
     return (
-      <Card>
-        <h2 className="text-lg font-semibold">Configuração necessária</h2>
-        <p className="mt-2 text-sm text-neutral-400">
-          Defina <code className="text-brand">NEXT_PUBLIC_SPOTIFY_CLIENT_ID</code> nas
+      <div className="panel">
+        <h2 className="label-marker text-2xl text-rust">Falta configurar</h2>
+        <p className="mt-2 text-sm">
+          Defina <code className="text-rust">NEXT_PUBLIC_SPOTIFY_CLIENT_ID</code> nas
           variáveis de ambiente do Vercel. Crie um app em{" "}
-          <a className="text-brand underline" href="https://developer.spotify.com/dashboard" target="_blank" rel="noreferrer">
+          <a className="text-rust underline" href="https://developer.spotify.com/dashboard" target="_blank" rel="noreferrer">
             developer.spotify.com
           </a>{" "}
-          e adicione a Redirect URI <code>{typeof window !== "undefined" ? `${window.location.origin}/spotify` : "/spotify"}</code>.
+          e adicione a Redirect URI{" "}
+          <code>{typeof window !== "undefined" ? `${window.location.origin}/spotify` : "/spotify"}</code>.
         </p>
-      </Card>
+      </div>
     );
   }
 
   return (
-    <Card>
+    <div className="panel">
       {!authed ? (
-        <div>
-          <h2 className="text-lg font-semibold">Conectar ao Spotify</h2>
-          <p className="mt-2 text-sm text-neutral-400">
-            Faça login para detectar a faixa atual e nomear as gravações automaticamente.
+        <div className="text-center">
+          <h2 className="label-marker text-2xl text-rust">Conecte sua conta</h2>
+          <p className="mx-auto mt-2 max-w-md text-sm">
+            Entre no Spotify para etiquetar cada faixa automaticamente — como
+            escrever o nome da música na capa da fita.
           </p>
-          <button onClick={() => login()} className="btn-primary mt-4">
-            Entrar com Spotify
+          <button onClick={() => login()} className="btn-key btn-rec mt-4">
+            ⦿ INSERIR FITA · ENTRAR
           </button>
         </div>
       ) : (
         <>
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Gravador</h2>
+            <span className="label-marker text-xl text-ink">Lado A · Gravação</span>
             <button
               onClick={() => { logout(); setAuthed(false); }}
-              className="text-xs text-neutral-500 hover:text-neutral-300"
+              className="text-xs underline text-ink/60 hover:text-ink"
             >
-              Sair
+              ejetar fita
             </button>
           </div>
 
-          <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm text-neutral-400">
-            <li>Abra o Spotify (web player ou app) e comece a tocar.</li>
-            <li>Clique em “Iniciar gravação” e compartilhe a aba/tela <b>com áudio</b>.</li>
-            <li>Cada troca de faixa vira um arquivo separado, nomeado automaticamente.</li>
+          {/* ── A FITA CASSETE ── */}
+          <div className="cassette mt-4">
+            <div className="flex items-center justify-between gap-4 px-2">
+              <div className={`reel ${recording && current?.isPlaying ? "reel-spin" : ""}`} />
+              <div className="tape-window flex-1 text-center">
+                {recording ? (
+                  current?.isPlaying ? (
+                    <span className="label-marker text-mustard">
+                      ▶ {current.artist} — {current.title}
+                    </span>
+                  ) : (
+                    <span className="text-sm text-paper/60">▮▮ aguardando o play…</span>
+                  )
+                ) : (
+                  <span className="text-sm text-paper/60">▣ fita parada</span>
+                )}
+              </div>
+              <div className={`reel ${recording && current?.isPlaying ? "reel-spin" : ""}`} />
+            </div>
+            <div className="mt-3 text-center text-[10px] tracking-[0.3em] text-paper/40">
+              NORMAL · POSITION · TYPE&nbsp;I &nbsp;—&nbsp; 90&nbsp;MIN
+            </div>
+          </div>
+
+          <ol className="mt-4 list-decimal space-y-1 pl-5 text-sm">
+            <li>Abra o Spotify (web ou app) e dê o play.</li>
+            <li>Aperte REC e compartilhe a aba/tela <b>com áudio</b>.</li>
+            <li>Cada música vira uma faixa separada, etiquetada sozinha.</li>
           </ol>
 
           <div className="mt-4 flex gap-3">
             {!recording ? (
-              <button onClick={start} className="btn-primary">● Iniciar gravação</button>
+              <button onClick={start} className="btn-key btn-rec">⦿ REC</button>
             ) : (
-              <button onClick={stop} className="btn-danger">■ Parar</button>
+              <button onClick={stop} className="btn-key btn-stop">■ STOP</button>
             )}
           </div>
 
-          {recording && (
-            <div className="mt-4 rounded-md border border-neutral-800 bg-neutral-950 p-3 text-sm">
-              {current?.isPlaying ? (
-                <span className="text-brand">
-                  ▶ Gravando: {current.artist} — {current.title}
-                </span>
-              ) : (
-                <span className="text-neutral-500">Aguardando reprodução no Spotify…</span>
-              )}
-            </div>
-          )}
-
           {error && (
-            <p className="mt-4 rounded-md bg-red-950/50 p-3 text-sm text-red-300">{error}</p>
+            <p className="mt-4 border-2 border-rust bg-rust/10 p-3 text-sm text-ink">{error}</p>
           )}
 
           {recordings.length > 0 && (
             <div className="mt-6">
-              <h3 className="mb-2 text-sm font-semibold text-neutral-300">
-                Gravações ({recordings.length})
-              </h3>
-              <ul className="space-y-2">
-                {recordings.map((r) => (
-                  <li
-                    key={r.id}
-                    className="flex items-center justify-between gap-3 rounded-md border border-neutral-800 bg-neutral-950 p-3 text-sm"
-                  >
+              <div className="label-marker mb-2 text-lg text-ink">
+                Capa da fita · {recordings.length} faixa(s)
+              </div>
+              <ul className="cassette-label space-y-2">
+                {recordings.map((r, i) => (
+                  <li key={r.id} className="flex items-center justify-between gap-3 text-sm">
                     <div className="min-w-0">
-                      <div className="truncate font-medium">{r.artist} — {r.title}</div>
-                      <div className="truncate text-xs text-neutral-500">{r.album}</div>
+                      <span className="label-marker mr-2 text-rust">{i + 1}.</span>
+                      <span className="font-bold">{r.artist} — {r.title}</span>
+                      <span className="ml-2 text-ink/50">({r.album})</span>
                     </div>
                     <div className="flex shrink-0 gap-2">
                       {r.mp3 ? (
                         <button
                           onClick={() => downloadBlob(r.mp3!, `${sanitize(`${r.artist} - ${r.title}`)}.mp3`)}
-                          className="btn-small"
+                          className="btn-key"
                         >
                           ⬇ MP3
                         </button>
                       ) : (
-                        <button
-                          onClick={() => convert(r)}
-                          disabled={r.converting}
-                          className="btn-small"
-                        >
-                          {r.converting ? "Convertendo…" : "→ MP3"}
+                        <button onClick={() => convert(r)} disabled={r.converting} className="btn-key">
+                          {r.converting ? "gravando…" : "→ MP3"}
                         </button>
                       )}
                       <button
                         onClick={() => downloadBlob(r.blob, `${sanitize(`${r.artist} - ${r.title}`)}.webm`)}
-                        className="btn-small-ghost"
+                        className="btn-key"
                       >
-                        ⬇ WebM
+                        ⬇ WEBM
                       </button>
                     </div>
                   </li>
@@ -284,7 +275,7 @@ export default function SpotifyPanel() {
           )}
         </>
       )}
-    </Card>
+    </div>
   );
 }
 
@@ -296,12 +287,4 @@ function pickMime(): string {
     }
   }
   return "audio/webm";
-}
-
-function Card({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-6">
-      {children}
-    </div>
-  );
 }

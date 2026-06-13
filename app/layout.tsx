@@ -1,28 +1,40 @@
 import type { Metadata } from "next";
+import { Special_Elite, Permanent_Marker } from "next/font/google";
 import "./globals.css";
+
+// Fontes analógicas: máquina de escrever + caneta de etiqueta.
+const typewriter = Special_Elite({
+  weight: "400",
+  subsets: ["latin"],
+  variable: "--font-typewriter",
+});
+const marker = Permanent_Marker({
+  weight: "400",
+  subsets: ["latin"],
+  variable: "--font-marker",
+});
 
 export const metadata: Metadata = {
   title: "Alexander Audio Recorder",
-  description: "Grave e corte músicas do Spotify e do YouTube em arquivos MP3 organizados.",
+  description: "Grave fitas do Spotify e corte fitas do YouTube. Som analógico, jeitão dos anos 80.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR">
+    <html lang="pt-BR" className={`${typewriter.variable} ${marker.variable}`}>
       <body>
+        <div className="scanlines" aria-hidden />
         <div className="mx-auto max-w-3xl px-4 py-8">
-          <header className="mb-8">
-            <h1 className="text-2xl font-bold tracking-tight">
-              🎵 Alexander Audio Recorder
-            </h1>
-            <p className="mt-1 text-sm text-neutral-400">
-              Transforme músicas do Spotify e do YouTube em arquivos MP3 organizados.
+          <header className="mb-8 text-center">
+            <h1 className="title-stamp">ALEXANDER&nbsp;AUDIO&nbsp;RECORDER</h1>
+            <p className="mt-2 text-sm tracking-widest text-ink/70">
+              ✦ HI-FI STEREO CASSETTE &nbsp;·&nbsp; SPLICE &amp; RECORD &nbsp;·&nbsp; MODELO 1986 ✦
             </p>
           </header>
           {children}
-          <footer className="mt-12 border-t border-neutral-800 pt-6 text-xs text-neutral-500">
-            Ferramenta para uso pessoal/educacional. Respeite os Termos de Serviço
-            do Spotify e do YouTube e os direitos autorais do conteúdo.
+          <footer className="mt-12 border-t-2 border-dashed border-ink/30 pt-6 text-center text-xs text-ink/60">
+            Para uso pessoal/educacional. Respeite os direitos autorais e os
+            Termos de Serviço do Spotify e do YouTube.
           </footer>
         </div>
       </body>
