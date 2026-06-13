@@ -84,6 +84,15 @@ def get_job(job_id: str):
     return job
 
 
+@app.get("/")
+def root():
+    return {
+        "service": "Alexander Audio Recorder — YouTube API",
+        "status": "online",
+        "endpoints": ["POST /jobs", "GET /jobs/{id}", "GET /files/{id}/...", "GET /health"],
+    }
+
+
 @app.get("/health")
 def health():
     return {"ok": True}
