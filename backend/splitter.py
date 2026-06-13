@@ -21,18 +21,35 @@ class SplitterError(Exception):
 
 def _cookie_args() -> list[str]:
     """
-    Cookies do YouTube ajudam a contornar o bloqueio de IPs de datacenter (HTTP 429).
-    Defina no host UMA das opções:
+    Cookies do YouTube ajudam a contornar o bloqueio de IPs de datacenter
+    (HTTP 429 / "Sign in to confirm you're not a bot"). Defina no host UMA destas
+    variáveis (em ordem de prioridade):
       - YT_COOKIES_FILE: caminho para um cookies.txt (formato Netscape)
-      - YT_COOKIES:      o conteúdo do cookies.txt direto na variável
+      - YT_COOKIES_B64:  o cookies.txt inteiro codificado em base64 (RECOMENDADO —
+                         evita que o painel do host estrague os TABs do arquivo)
+      - YT_COOKIES:      o conteúdo do cookies.txt direto na variável (frágil:
+                         alguns painéis convertem TAB em espaço e quebram o parse)
     """
     path = os.environ.get("YT_COOKIES_FILE")
-    content = os.environ.get("YT_COOKIES")
-    if not path and content:
-        path = os.path.join(tempfile.gettempdir(), "yt_cookies.txt")
-        if not os.path.isfile(path):
-            with open(path, "w", encoding="utf-8") as f:
-                f.write(content)
+
+    if not path:
+        b64 = os.environ.get("YT_COOKIES_B64")
+        content = os.environ.get("YT_COOKIES")
+        data: str | None = None
+        if b64:
+            import base64
+            try:
+                data = base64.b64decode(b64).decode("utf-8")
+            except Exception as e:  # noqa: BLE001
+                raise SplitterError(f"YT_COOKIES_B64 inválido: {e}")
+        elif content:
+            data = content
+
+        if data:
+            path = os.path.join(tempfile.gettempdir(), "yt_cookies.txt")
+            with open(path, "w", encoding="utf-8", newline="\n") as f:
+                f.write(data)
+
     if path and os.path.isfile(path):
         return ["--cookies", path]
     return []
