@@ -6,6 +6,14 @@
   color-scheme: light;
 }
 
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes led-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
 body {
   font-family: var(--font-typewriter), monospace;
   color: #2b2118;
@@ -173,6 +181,79 @@ body {
     border-radius: 6px;
     padding: 0.6rem 1rem;
     border: 2px solid #000;
+  }
+
+  /* ── EMBLEMA CANTO SUPERIOR ESQUERDO ───────────── */
+  .corner-brand {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    z-index: 40;
+    transform: rotate(-3deg);
+    background: #2b2118;
+    color: #e9dcc3;
+    border: 2px solid #11100c;
+    border-radius: 3px;
+    padding: 0.35rem 0.6rem;
+    box-shadow: 3px 3px 0 rgba(43, 33, 24, 0.5);
+    line-height: 1;
+  }
+  .corner-brand .cb-top {
+    font-family: var(--font-marker), cursive;
+    font-size: 0.95rem;
+    color: #c98a1a;
+    letter-spacing: 0.02em;
+  }
+  .corner-brand .cb-sub {
+    display: block;
+    font-family: var(--font-typewriter), monospace;
+    font-size: 0.5rem;
+    letter-spacing: 0.34em;
+    color: #e9dcc3;
+    opacity: 0.8;
+    margin-top: 2px;
+  }
+
+  /* ── VU METER ANALÓGICO ────────────────────────── */
+  .vu-face {
+    position: relative;
+    background: linear-gradient(180deg, #f4ecd8, #e2cfa6);
+    border: 2px solid #11100c;
+    border-radius: 4px;
+    padding: 0.4rem 0.4rem 0.9rem;
+    box-shadow: inset 0 2px 6px rgba(43, 33, 24, 0.35);
+  }
+  .vu-text {
+    font-family: var(--font-typewriter), monospace;
+    font-size: 9px;
+    fill: #2b2118;
+  }
+  .vu-vu {
+    font-family: var(--font-marker), cursive;
+    font-size: 13px;
+    fill: #b5471f;
+  }
+  .vu-led {
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #5a3a22;
+    border: 1px solid #11100c;
+  }
+  .vu-led-on {
+    background: #ff3b1d;
+    box-shadow: 0 0 8px 2px rgba(255, 59, 29, 0.7);
+    animation: led-pulse 1.4s ease-in-out infinite;
+  }
+  .vu-chan {
+    position: absolute;
+    left: 8px;
+    bottom: 4px;
+    font-size: 0.8rem;
+    color: #2b2118;
   }
 
   /* ── FITA MAGNÉTICA / SPLICE (YouTube) ─────────── */

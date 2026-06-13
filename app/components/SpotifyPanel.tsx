@@ -11,6 +11,7 @@ import {
 import { getCurrentTrack, type Track } from "../lib/spotifyApi";
 import { sanitize, downloadBlob } from "../lib/util";
 import { toMp3 } from "../lib/ffmpeg";
+import VuMeter from "./VuMeter";
 
 type Recording = {
   id: string;
@@ -212,6 +213,12 @@ export default function SpotifyPanel() {
               </div>
               <div className={`reel ${recording && current?.isPlaying ? "reel-spin" : ""}`} />
             </div>
+
+            {/* VU meter analógico estéreo */}
+            <div className="mt-4">
+              <VuMeter stream={streamRef.current} active={recording} />
+            </div>
+
             <div className="mt-3 text-center text-[10px] tracking-[0.3em] text-paper/40">
               NORMAL · POSITION · TYPE&nbsp;I &nbsp;—&nbsp; 90&nbsp;MIN
             </div>

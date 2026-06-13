@@ -24,6 +24,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="pt-BR" className={`${typewriter.variable} ${marker.variable}`}>
       <body>
         <div className="scanlines" aria-hidden />
+        <div className="corner-brand">
+          <span className="cb-top">Alexander Audio Tools</span>
+          <span className="cb-sub">EST. 1986 · ANALOG DIVISION</span>
+        </div>
         <div className="mx-auto max-w-3xl px-4 py-8">
           <header className="mb-8 text-center">
             <h1 className="title-stamp">ALEXANDER&nbsp;AUDIO&nbsp;RECORDER</h1>
