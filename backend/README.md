@@ -61,15 +61,23 @@ Defina `ALLOWED_ORIGINS` com a URL do Vercel.
 IPs de datacenter (Render, Railway, etc.) costumam ser bloqueados pelo YouTube.
 A solução confiável é fornecer **cookies** de uma conta logada:
 
-1. No navegador (logado no YouTube), instale uma extensão tipo
-   "Get cookies.txt LOCALLY" e exporte os cookies de `youtube.com` no formato Netscape.
-2. No Render: serviço → **Environment** → adicione a variável:
-   - `YT_COOKIES` = cole **todo o conteúdo** do arquivo cookies.txt
-   - (ou `YT_COOKIES_FILE` com o caminho de um arquivo montado)
-3. Salve — o Render redeploya e o yt-dlp passa a usar os cookies.
+1. No navegador (logado no YouTube), instale a extensão "Get cookies.txt LOCALLY"
+   e exporte **somente os cookies de `youtube.com`** (formato Netscape) → `cookies.txt`.
+2. Converta o arquivo para **base64** (recomendado — evita que o painel estrague os TABs):
+   - Linux/macOS: `base64 -w0 cookies.txt` (no macOS: `base64 cookies.txt | tr -d '\n'`)
+   - Windows PowerShell: `[Convert]::ToBase64String([IO.File]::ReadAllBytes("cookies.txt"))`
+3. No Render: serviço → **Environment** → adicione:
+   - `YT_COOKIES_B64` = cole a string base64 (uma linha só)
+4. Salve — o Render redeploya e o yt-dlp passa a usar os cookies.
 
+> **Dica importante:** exporte os cookies de uma **janela anônima** e feche-a logo após
+> exportar. Assim a sessão não é "rotacionada" pelo navegador, o que invalidaria os cookies.
+>
 > Use uma conta secundária/descartável: cookies dão acesso à sessão do YouTube.
-> Eles também expiram, então pode ser preciso reexportar de tempos em tempos.
+> Eles expiram, então pode ser preciso reexportar de tempos em tempos.
+>
+> Alternativas: `YT_COOKIES` (conteúdo cru — frágil por causa dos TABs) ou
+> `YT_COOKIES_FILE` (caminho de um Secret File montado no host).
 
 O backend também envia `--retries`, `--extractor-retries` e `--sleep-requests`
 automaticamente para reduzir os 429.
