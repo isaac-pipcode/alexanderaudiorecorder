@@ -61,6 +61,9 @@ def _common_opts() -> list[str]:
         "--retries", "5",
         "--extractor-retries", "3",
         "--sleep-requests", "1",
+        # Baixa o solver de desafios JS (EJS) que o Deno executa para
+        # resolver a assinatura dos formatos do YouTube.
+        "--remote-components", "ejs:github",
         *_cookie_args(),
     ]
 
