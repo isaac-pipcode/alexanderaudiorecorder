@@ -106,34 +106,49 @@ def sanitize(name: str) -> str:
     return re.sub(r'[\\/:*?"<>|]', "_", name).strip()
 
 
+def _log(msg: str) -> None:
+    """Log visível nos logs do Render (com flush para aparecer na hora)."""
+    print(f"[splitter] {msg}", flush=True)
+
+
 def _ytdlp_cmd() -> list[str]:
     return [sys.executable, "-m", "yt_dlp"]
 
 
 def get_video_info(url: str) -> dict:
-    result = subprocess.run(
-        [*_ytdlp_cmd(), "--dump-json", "--no-playlist", *_common_opts(), url],
-        capture_output=True, text=True, encoding="utf-8",
-    )
+    _log(f"buscando metadados: {url}")
+    try:
+        result = subprocess.run(
+            [*_ytdlp_cmd(), "--dump-json", "--no-playlist", *_common_opts(), url],
+            capture_output=True, text=True, encoding="utf-8", timeout=180,
+        )
+    except subprocess.TimeoutExpired:
+        raise SplitterError("Timeout ao buscar metadados (yt-dlp travou em >180s).")
     if result.returncode != 0:
         raise SplitterError(f"yt-dlp falhou: {result.stderr.strip()[:500]}")
+    _log("metadados obtidos")
     return json.loads(result.stdout)
 
 
 def download_audio(url: str, output_path: Path) -> Path:
+    _log("baixando áudio…")
     template = str(output_path / "%(title)s.%(ext)s")
-    result = subprocess.run([
-        *_ytdlp_cmd(), "--no-playlist",
-        "-x", "--audio-format", "mp3", "--audio-quality", "0",
-        *_common_opts(),
-        "-o", template, url,
-    ], capture_output=True, text=True, encoding="utf-8")
+    try:
+        result = subprocess.run([
+            *_ytdlp_cmd(), "--no-playlist",
+            "-x", "--audio-format", "mp3", "--audio-quality", "0",
+            *_common_opts(),
+            "-o", template, url,
+        ], capture_output=True, text=True, encoding="utf-8", timeout=600)
+    except subprocess.TimeoutExpired:
+        raise SplitterError("Timeout no download (yt-dlp travou em >600s).")
     if result.returncode != 0:
         raise SplitterError(f"Download falhou: {result.stderr.strip()[:500]}")
 
     mp3_files = sorted(output_path.glob("*.mp3"), key=lambda f: f.stat().st_mtime, reverse=True)
     if not mp3_files:
         raise SplitterError("Nenhum MP3 encontrado após o download.")
+    _log(f"download concluído: {mp3_files[0].name}")
     return mp3_files[0]
 
 
@@ -210,15 +225,20 @@ def process(url: str, out_dir: Path, silence_len: float = 2.0,
     splits_dir.mkdir(parents=True, exist_ok=True)
 
     if chapters:
+        _log(f"cortando por {len(chapters)} capítulo(s)…")
         files = split_by_chapters(mp3, chapters, splits_dir)
     else:
+        _log("sem capítulos — detectando silêncios…")
         points = detect_silence_splits(mp3, silence_len, silence_thresh)
         if not points:
+            _log("nenhum silêncio — devolvendo arquivo único")
             target = splits_dir / mp3.name
             mp3.rename(target)
             return [target]
+        _log(f"cortando em {len(points)} ponto(s) de silêncio…")
         files = split_by_silence(mp3, points, splits_dir, title)
 
     if mp3.exists():
         mp3.unlink()
+    _log(f"concluído: {len(files)} arquivo(s)")
     return files
