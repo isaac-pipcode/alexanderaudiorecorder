@@ -19,6 +19,12 @@ class SplitterError(Exception):
     pass
 
 
+# Formato de saída. m4a (AAC) é o que o YouTube já entrega nativamente, então
+# conseguimos remuxar/cortar com "-c copy" SEM re-encodar (rápido). Pode trocar
+# para "mp3" via env, mas aí o ffmpeg transcodifica tudo (bem mais lento).
+AUDIO_EXT = os.environ.get("AUDIO_FORMAT", "m4a").lower()
+
+
 def _cookie_args() -> list[str]:
     """
     Cookies do YouTube ajudam a contornar o bloqueio de IPs de datacenter
@@ -131,12 +137,16 @@ def get_video_info(url: str) -> dict:
 
 
 def download_audio(url: str, output_path: Path) -> Path:
-    _log("baixando áudio…")
+    _log(f"baixando áudio (formato {AUDIO_EXT})…")
     template = str(output_path / "%(title)s.%(ext)s")
+    # Prioriza o stream nativo no formato desejado para evitar re-encode.
+    fmt = f"bestaudio[ext={AUDIO_EXT}]/bestaudio/best"
     try:
         result = subprocess.run([
             *_ytdlp_cmd(), "--no-playlist",
-            "-x", "--audio-format", "mp3", "--audio-quality", "0",
+            "-f", fmt,
+            "-x", "--audio-format", AUDIO_EXT, "--audio-quality", "0",
+            "--concurrent-fragments", "4",
             *_common_opts(),
             "-o", template, url,
         ], capture_output=True, text=True, encoding="utf-8", timeout=600)
@@ -145,11 +155,11 @@ def download_audio(url: str, output_path: Path) -> Path:
     if result.returncode != 0:
         raise SplitterError(f"Download falhou: {result.stderr.strip()[:500]}")
 
-    mp3_files = sorted(output_path.glob("*.mp3"), key=lambda f: f.stat().st_mtime, reverse=True)
-    if not mp3_files:
-        raise SplitterError("Nenhum MP3 encontrado após o download.")
-    _log(f"download concluído: {mp3_files[0].name}")
-    return mp3_files[0]
+    files = sorted(output_path.glob(f"*.{AUDIO_EXT}"), key=lambda f: f.stat().st_mtime, reverse=True)
+    if not files:
+        raise SplitterError(f"Nenhum arquivo .{AUDIO_EXT} encontrado após o download.")
+    _log(f"download concluído: {files[0].name}")
+    return files[0]
 
 
 def get_duration(file: Path) -> float:
@@ -169,7 +179,7 @@ def split_by_chapters(mp3: Path, chapters: list, out_dir: Path) -> list[Path]:
             chapters[i + 1]["start_time"] if i + 1 < len(chapters) else total
         )
         title = sanitize(chapter["title"])
-        out_file = out_dir / f"{i+1:02d} - {title}.mp3"
+        out_file = out_dir / f"{i+1:02d} - {title}.{AUDIO_EXT}"
         subprocess.run([
             "ffmpeg", "-y", "-i", str(mp3), "-ss", str(start), "-to", str(end),
             "-c", "copy", str(out_file),
@@ -202,7 +212,7 @@ def split_by_silence(mp3: Path, split_points: list[float], out_dir: Path, base_n
                 if boundaries[i + 1] - boundaries[i] > 1.0]
     files: list[Path] = []
     for i, (start, end) in enumerate(segments):
-        out_file = out_dir / f"{base_name} - Part {i+1:02d}.mp3"
+        out_file = out_dir / f"{base_name} - Part {i+1:02d}.{AUDIO_EXT}"
         subprocess.run([
             "ffmpeg", "-y", "-i", str(mp3), "-ss", str(start), "-to", str(end),
             "-c", "copy", str(out_file),
