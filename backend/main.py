@@ -7,6 +7,8 @@ Endpoints:
 """
 
 import os
+import shutil
+import time
 import uuid
 from pathlib import Path
 
@@ -33,6 +35,23 @@ app.add_middleware(
 
 # Jobs em memória (para produção use Redis/DB — ver README).
 JOBS: dict[str, dict] = {}
+
+# Tempo de vida dos arquivos gerados antes da limpeza automática (horas).
+CLEANUP_TTL_HOURS = float(os.environ.get("CLEANUP_TTL_HOURS", "6"))
+
+
+def cleanup_old_outputs():
+    """Apaga pastas de jobs antigas (> TTL) para não encher o disco."""
+    cutoff = time.time() - CLEANUP_TTL_HOURS * 3600
+    try:
+        for child in OUTPUT_ROOT.iterdir():
+            if not child.is_dir():
+                continue
+            if child.stat().st_mtime < cutoff:
+                shutil.rmtree(child, ignore_errors=True)
+                JOBS.pop(child.name, None)
+    except FileNotFoundError:
+        pass
 
 
 class JobRequest(BaseModel):
@@ -83,6 +102,7 @@ def _run_job(job_id: str, req: JobRequest):
 
 @app.post("/jobs")
 def create_job(req: JobRequest, background: BackgroundTasks):
+    cleanup_old_outputs()
     job_id = uuid.uuid4().hex
     JOBS[job_id] = {
         "id": job_id, "status": "pending", "files": [],
