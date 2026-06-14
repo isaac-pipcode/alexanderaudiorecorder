@@ -3,15 +3,16 @@
 import { useState } from "react";
 import SpotifyPanel from "./components/SpotifyPanel";
 import YoutubePanel from "./components/YoutubePanel";
+import DownloadPanel from "./components/DownloadPanel";
 
-type Tab = "spotify" | "youtube";
+type Tab = "spotify" | "youtube" | "download";
 
 export default function Home() {
   const [tab, setTab] = useState<Tab>("spotify");
 
   return (
     <main>
-      <div className="mb-6 flex justify-center gap-3">
+      <div className="mb-6 flex flex-wrap justify-center gap-3">
         <button
           onClick={() => setTab("spotify")}
           className={`btn-key ${tab === "spotify" ? "btn-rec" : ""}`}
@@ -24,9 +25,17 @@ export default function Home() {
         >
           ✂ SPLICE · YOUTUBE
         </button>
+        <button
+          onClick={() => setTab("download")}
+          className={`btn-key ${tab === "download" ? "btn-stop" : ""}`}
+        >
+          ⬇ DUB · BAIXAR
+        </button>
       </div>
 
-      {tab === "spotify" ? <SpotifyPanel /> : <YoutubePanel />}
+      {tab === "spotify" && <SpotifyPanel />}
+      {tab === "youtube" && <YoutubePanel />}
+      {tab === "download" && <DownloadPanel />}
     </main>
   );
 }
