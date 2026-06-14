@@ -65,6 +65,33 @@ def _common_opts() -> list[str]:
     ]
 
 
+def cookie_status() -> dict:
+    """Diagnóstico seguro: diz se os cookies estão chegando, sem vazar conteúdo."""
+    status: dict = {
+        "env_YT_COOKIES_B64": bool(os.environ.get("YT_COOKIES_B64")),
+        "env_YT_COOKIES": bool(os.environ.get("YT_COOKIES")),
+        "env_YT_COOKIES_FILE": os.environ.get("YT_COOKIES_FILE") or None,
+        "cookies_active": False,
+        "cookie_file": None,
+        "cookie_lines": 0,
+        "has_youtube_lines": False,
+        "error": None,
+    }
+    try:
+        args = _cookie_args()
+        if args:
+            path = args[1]
+            status["cookies_active"] = True
+            status["cookie_file"] = path
+            with open(path, "r", encoding="utf-8") as f:
+                lines = f.read().splitlines()
+            status["cookie_lines"] = len(lines)
+            status["has_youtube_lines"] = any("youtube.com" in ln for ln in lines)
+    except Exception as e:  # noqa: BLE001
+        status["error"] = str(e)
+    return status
+
+
 def sanitize(name: str) -> str:
     return re.sub(r'[\\/:*?"<>|]', "_", name).strip()
 
