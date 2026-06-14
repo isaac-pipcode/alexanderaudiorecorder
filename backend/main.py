@@ -40,6 +40,7 @@ class JobRequest(BaseModel):
     silence_len: float = 2.0
     silence_thresh: int = -40
     audio_format: str = "m4a"  # "m4a" (rápido) ou "mp3" (lento, transcodifica)
+    split: bool = True         # False = só baixa a música inteira (sem cortar)
 
 
 def _public_base() -> str:
@@ -61,7 +62,7 @@ def _run_job(job_id: str, req: JobRequest):
         audio_ext = "mp3" if req.audio_format.lower() == "mp3" else "m4a"
         files = process(
             req.url, out_dir, req.silence_len, req.silence_thresh,
-            audio_ext=audio_ext, on_progress=on_progress,
+            audio_ext=audio_ext, on_progress=on_progress, split=req.split,
         )
         base = _public_base()
         JOBS[job_id]["files"] = [

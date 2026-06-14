@@ -249,8 +249,8 @@ def split_by_silence(mp3: Path, split_points: list[float], out_dir: Path,
 
 def process(url: str, out_dir: Path, silence_len: float = 2.0,
             silence_thresh: int = -40, audio_ext: str | None = None,
-            on_progress=None) -> list[Path]:
-    """Baixa, corta e devolve a lista de arquivos gerados."""
+            on_progress=None, split: bool = True) -> list[Path]:
+    """Baixa e (opcionalmente) corta. Devolve a lista de arquivos gerados."""
     ext = (audio_ext or AUDIO_EXT).lower()
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -261,6 +261,14 @@ def process(url: str, out_dir: Path, silence_len: float = 2.0,
     chapters = info.get("chapters") or []
 
     mp3 = download_audio(url, out_dir, ext, on_progress)
+
+    # Modo "apenas baixar": devolve a música inteira, sem cortar.
+    if not split:
+        _log("modo download — sem corte")
+        if on_progress:
+            on_progress(100, "concluído")
+        return [mp3]
+
     splits_dir = out_dir / title
     splits_dir.mkdir(parents=True, exist_ok=True)
 
