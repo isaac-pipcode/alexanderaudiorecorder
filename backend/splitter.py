@@ -68,6 +68,13 @@ def _common_opts() -> list[str]:
 def cookie_status() -> dict:
     """Diagnóstico seguro: diz se os cookies estão chegando, sem vazar conteúdo."""
     status: dict = {
+        "render_service": os.environ.get("RENDER_SERVICE_NAME"),
+        "render_url": os.environ.get("RENDER_EXTERNAL_URL"),
+        # nomes das chaves relacionadas (NUNCA os valores) para detectar typos
+        "matching_env_keys": sorted(
+            k for k in os.environ
+            if "COOK" in k.upper() or k.upper().startswith("YT")
+        ),
         "env_YT_COOKIES_B64": bool(os.environ.get("YT_COOKIES_B64")),
         "env_YT_COOKIES": bool(os.environ.get("YT_COOKIES")),
         "env_YT_COOKIES_FILE": os.environ.get("YT_COOKIES_FILE") or None,
