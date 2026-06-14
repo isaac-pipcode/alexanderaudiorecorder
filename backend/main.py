@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from splitter import SplitterError, process
+from splitter import SplitterError, cookie_status, process
 
 OUTPUT_ROOT = Path(os.environ.get("OUTPUT_DIR", "output")).resolve()
 OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
@@ -96,6 +96,12 @@ def root():
 @app.get("/health")
 def health():
     return {"ok": True}
+
+
+@app.get("/debug/cookies")
+def debug_cookies():
+    """Diagnóstico: confirma se o backend está enxergando os cookies (sem vazá-los)."""
+    return cookie_status()
 
 
 # Servir os arquivos gerados.
