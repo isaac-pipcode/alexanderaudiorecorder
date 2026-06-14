@@ -136,28 +136,53 @@ def get_video_info(url: str) -> dict:
     return json.loads(result.stdout)
 
 
-def download_audio(url: str, output_path: Path) -> Path:
-    _log(f"baixando áudio (formato {AUDIO_EXT})…")
+def download_audio(url: str, output_path: Path, audio_ext: str,
+                   on_progress=None) -> Path:
+    _log(f"baixando áudio (formato {audio_ext})…")
     template = str(output_path / "%(title)s.%(ext)s")
     # Prioriza o stream nativo no formato desejado para evitar re-encode.
-    fmt = f"bestaudio[ext={AUDIO_EXT}]/bestaudio/best"
-    try:
-        result = subprocess.run([
-            *_ytdlp_cmd(), "--no-playlist",
-            "-f", fmt,
-            "-x", "--audio-format", AUDIO_EXT, "--audio-quality", "0",
-            "--concurrent-fragments", "4",
-            *_common_opts(),
-            "-o", template, url,
-        ], capture_output=True, text=True, encoding="utf-8", timeout=600)
-    except subprocess.TimeoutExpired:
-        raise SplitterError("Timeout no download (yt-dlp travou em >600s).")
-    if result.returncode != 0:
-        raise SplitterError(f"Download falhou: {result.stderr.strip()[:500]}")
+    fmt = f"bestaudio[ext={audio_ext}]/bestaudio/best"
+    cmd = [
+        *_ytdlp_cmd(), "--no-playlist",
+        "-f", fmt,
+        "-x", "--audio-format", audio_ext, "--audio-quality", "0",
+        "--concurrent-fragments", "4",
+        "--newline",          # progresso uma linha por atualização (fácil parsear)
+        "--socket-timeout", "30",
+        *_common_opts(),
+        "-o", template, url,
+    ]
 
-    files = sorted(output_path.glob(f"*.{AUDIO_EXT}"), key=lambda f: f.stat().st_mtime, reverse=True)
+    # Streaming: lê a saída linha a linha e reporta o % de download em tempo real.
+    proc = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, encoding="utf-8", errors="replace", bufsize=1,
+    )
+    tail: list[str] = []
+    pct_re = re.compile(r"\[download\]\s+(\d+(?:\.\d+)?)%")
+    assert proc.stdout is not None
+    for line in proc.stdout:
+        line = line.rstrip()
+        if not line:
+            continue
+        tail.append(line)
+        if len(tail) > 25:
+            tail.pop(0)
+        m = pct_re.search(line)
+        if m and on_progress:
+            pct = float(m.group(1))
+            # download ocupa a faixa 10%..80% do progresso geral
+            on_progress(10 + pct * 0.70, "baixando")
+        elif "[ExtractAudio]" in line and on_progress:
+            on_progress(80, f"convertendo para {audio_ext}")
+    proc.wait()
+
+    if proc.returncode != 0:
+        raise SplitterError("Download falhou: " + "\n".join(tail)[-500:])
+
+    files = sorted(output_path.glob(f"*.{audio_ext}"), key=lambda f: f.stat().st_mtime, reverse=True)
     if not files:
-        raise SplitterError(f"Nenhum arquivo .{AUDIO_EXT} encontrado após o download.")
+        raise SplitterError(f"Nenhum arquivo .{audio_ext} encontrado após o download.")
     _log(f"download concluído: {files[0].name}")
     return files[0]
 
@@ -170,7 +195,7 @@ def get_duration(file: Path) -> float:
     return float(result.stdout.strip())
 
 
-def split_by_chapters(mp3: Path, chapters: list, out_dir: Path) -> list[Path]:
+def split_by_chapters(mp3: Path, chapters: list, out_dir: Path, audio_ext: str) -> list[Path]:
     total = get_duration(mp3)
     files: list[Path] = []
     for i, chapter in enumerate(chapters):
@@ -179,7 +204,7 @@ def split_by_chapters(mp3: Path, chapters: list, out_dir: Path) -> list[Path]:
             chapters[i + 1]["start_time"] if i + 1 < len(chapters) else total
         )
         title = sanitize(chapter["title"])
-        out_file = out_dir / f"{i+1:02d} - {title}.{AUDIO_EXT}"
+        out_file = out_dir / f"{i+1:02d} - {title}.{audio_ext}"
         subprocess.run([
             "ffmpeg", "-y", "-i", str(mp3), "-ss", str(start), "-to", str(end),
             "-c", "copy", str(out_file),
@@ -204,7 +229,8 @@ def detect_silence_splits(mp3: Path, min_silence_len: float, silence_thresh: int
     return splits
 
 
-def split_by_silence(mp3: Path, split_points: list[float], out_dir: Path, base_name: str) -> list[Path]:
+def split_by_silence(mp3: Path, split_points: list[float], out_dir: Path,
+                     base_name: str, audio_ext: str) -> list[Path]:
     total = get_duration(mp3)
     boundaries = [0.0] + split_points + [total]
     segments = [(boundaries[i], boundaries[i + 1])
@@ -212,7 +238,7 @@ def split_by_silence(mp3: Path, split_points: list[float], out_dir: Path, base_n
                 if boundaries[i + 1] - boundaries[i] > 1.0]
     files: list[Path] = []
     for i, (start, end) in enumerate(segments):
-        out_file = out_dir / f"{base_name} - Part {i+1:02d}.{AUDIO_EXT}"
+        out_file = out_dir / f"{base_name} - Part {i+1:02d}.{audio_ext}"
         subprocess.run([
             "ffmpeg", "-y", "-i", str(mp3), "-ss", str(start), "-to", str(end),
             "-c", "copy", str(out_file),
@@ -222,21 +248,28 @@ def split_by_silence(mp3: Path, split_points: list[float], out_dir: Path, base_n
 
 
 def process(url: str, out_dir: Path, silence_len: float = 2.0,
-            silence_thresh: int = -40) -> list[Path]:
+            silence_thresh: int = -40, audio_ext: str | None = None,
+            on_progress=None) -> list[Path]:
     """Baixa, corta e devolve a lista de arquivos gerados."""
+    ext = (audio_ext or AUDIO_EXT).lower()
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    if on_progress:
+        on_progress(5, "buscando metadados")
     info = get_video_info(url)
     title = sanitize(info.get("title", "audio"))
     chapters = info.get("chapters") or []
 
-    mp3 = download_audio(url, out_dir)
+    mp3 = download_audio(url, out_dir, ext, on_progress)
     splits_dir = out_dir / title
     splits_dir.mkdir(parents=True, exist_ok=True)
 
+    if on_progress:
+        on_progress(85, "cortando")
+
     if chapters:
         _log(f"cortando por {len(chapters)} capítulo(s)…")
-        files = split_by_chapters(mp3, chapters, splits_dir)
+        files = split_by_chapters(mp3, chapters, splits_dir, ext)
     else:
         _log("sem capítulos — detectando silêncios…")
         points = detect_silence_splits(mp3, silence_len, silence_thresh)
@@ -244,11 +277,15 @@ def process(url: str, out_dir: Path, silence_len: float = 2.0,
             _log("nenhum silêncio — devolvendo arquivo único")
             target = splits_dir / mp3.name
             mp3.rename(target)
+            if on_progress:
+                on_progress(100, "concluído")
             return [target]
         _log(f"cortando em {len(points)} ponto(s) de silêncio…")
-        files = split_by_silence(mp3, points, splits_dir, title)
+        files = split_by_silence(mp3, points, splits_dir, title, ext)
 
     if mp3.exists():
         mp3.unlink()
     _log(f"concluído: {len(files)} arquivo(s)")
+    if on_progress:
+        on_progress(100, "concluído")
     return files

@@ -256,6 +256,24 @@ body {
     color: #2b2118;
   }
 
+  /* ── BARRA DE PROGRESSO (fita enchendo) ────────── */
+  .progress-track {
+    height: 18px;
+    border: 2px solid #2b2118;
+    border-radius: 3px;
+    background: #f4ecd8;
+    overflow: hidden;
+    box-shadow: inset 0 1px 3px rgba(43, 33, 24, 0.3);
+  }
+  .progress-fill {
+    height: 100%;
+    background: repeating-linear-gradient(
+      90deg, #5a3a22 0px, #6b4527 6px, #4a2f1c 6px, #4a2f1c 12px
+    );
+    border-right: 2px solid #b5471f;
+    transition: width 0.4s ease;
+  }
+
   /* ── FITA MAGNÉTICA / SPLICE (YouTube) ─────────── */
   .magtape {
     background: repeating-linear-gradient(

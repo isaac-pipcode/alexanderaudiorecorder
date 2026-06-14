@@ -39,6 +39,7 @@ class JobRequest(BaseModel):
     url: str
     silence_len: float = 2.0
     silence_thresh: int = -40
+    audio_format: str = "m4a"  # "m4a" (rápido) ou "mp3" (lento, transcodifica)
 
 
 def _public_base() -> str:
@@ -50,9 +51,18 @@ def _public_base() -> str:
 
 def _run_job(job_id: str, req: JobRequest):
     JOBS[job_id]["status"] = "running"
+
+    def on_progress(progress: float, phase: str):
+        JOBS[job_id]["progress"] = round(progress, 1)
+        JOBS[job_id]["phase"] = phase
+
     try:
         out_dir = OUTPUT_ROOT / job_id
-        files = process(req.url, out_dir, req.silence_len, req.silence_thresh)
+        audio_ext = "mp3" if req.audio_format.lower() == "mp3" else "m4a"
+        files = process(
+            req.url, out_dir, req.silence_len, req.silence_thresh,
+            audio_ext=audio_ext, on_progress=on_progress,
+        )
         base = _public_base()
         JOBS[job_id]["files"] = [
             {
@@ -61,6 +71,8 @@ def _run_job(job_id: str, req: JobRequest):
             }
             for f in files
         ]
+        JOBS[job_id]["progress"] = 100.0
+        JOBS[job_id]["phase"] = "concluído"
         JOBS[job_id]["status"] = "done"
     except SplitterError as e:
         JOBS[job_id].update(status="error", message=str(e))
@@ -71,7 +83,10 @@ def _run_job(job_id: str, req: JobRequest):
 @app.post("/jobs")
 def create_job(req: JobRequest, background: BackgroundTasks):
     job_id = uuid.uuid4().hex
-    JOBS[job_id] = {"id": job_id, "status": "pending", "files": []}
+    JOBS[job_id] = {
+        "id": job_id, "status": "pending", "files": [],
+        "progress": 0.0, "phase": "na fila",
+    }
     background.add_task(_run_job, job_id, req)
     return JOBS[job_id]
 
