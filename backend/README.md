@@ -86,5 +86,6 @@ automaticamente para reduzir os 429.
 
 - Os jobs ficam **em memória**: reiniciar o serviço perde o histórico. Para produção,
   troque por Redis/DB + uma fila (RQ/Celery).
-- Limpe a pasta `output/` periodicamente (cron) para não encher o disco.
+- **Limpeza automática:** a cada novo job, pastas em `output/` mais antigas que
+  `CLEANUP_TTL_HOURS` (padrão 6h) são apagadas. Ajuste via variável de ambiente.
 - Considere rate limiting e validação de URL.
