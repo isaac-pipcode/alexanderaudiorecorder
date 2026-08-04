@@ -32,7 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <header className="mb-8 text-center">
             <h1 className="title-stamp">ALEXANDER&nbsp;AUDIO&nbsp;TOOLS</h1>
             <p className="mt-2 text-sm tracking-widest text-ink/70">
-              ✦ HI-FI STEREO CASSETTE &nbsp;·&nbsp; SPLICE &amp; RECORD &nbsp;·&nbsp; MODELO 1986 ✦
+              ✦ HI-FI STEREO CASSETTE &nbsp;·&nbsp; SPLICE · RECORD · VIDEO &nbsp;·&nbsp; MODELO 1986 ✦
             </p>
           </header>
           {children}

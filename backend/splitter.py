@@ -136,24 +136,9 @@ def get_video_info(url: str) -> dict:
     return json.loads(result.stdout)
 
 
-def download_audio(url: str, output_path: Path, audio_ext: str,
-                   on_progress=None) -> Path:
-    _log(f"baixando áudio (formato {audio_ext})…")
-    template = str(output_path / "%(title)s.%(ext)s")
-    # Prioriza o stream nativo no formato desejado para evitar re-encode.
-    fmt = f"bestaudio[ext={audio_ext}]/bestaudio/best"
-    cmd = [
-        *_ytdlp_cmd(), "--no-playlist",
-        "-f", fmt,
-        "-x", "--audio-format", audio_ext, "--audio-quality", "0",
-        "--concurrent-fragments", "4",
-        "--newline",          # progresso uma linha por atualização (fácil parsear)
-        "--socket-timeout", "30",
-        *_common_opts(),
-        "-o", template, url,
-    ]
-
-    # Streaming: lê a saída linha a linha e reporta o % de download em tempo real.
+def _stream_ytdlp(cmd: list[str], on_progress, convert_label: str | None = None,
+                  lo: float = 10.0, hi: float = 80.0) -> None:
+    """Roda o yt-dlp em streaming, reportando o % de download em tempo real."""
     proc = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         text=True, encoding="utf-8", errors="replace", bufsize=1,
@@ -171,18 +156,68 @@ def download_audio(url: str, output_path: Path, audio_ext: str,
         m = pct_re.search(line)
         if m and on_progress:
             pct = float(m.group(1))
-            # download ocupa a faixa 10%..80% do progresso geral
-            on_progress(10 + pct * 0.70, "baixando")
-        elif "[ExtractAudio]" in line and on_progress:
-            on_progress(80, f"convertendo para {audio_ext}")
+            on_progress(lo + pct * (hi - lo) / 100.0, "baixando")
+        elif convert_label and ("[ExtractAudio]" in line or "[Merger]" in line) and on_progress:
+            on_progress(hi, convert_label)
     proc.wait()
-
     if proc.returncode != 0:
         raise SplitterError("Download falhou: " + "\n".join(tail)[-500:])
+
+
+def download_audio(url: str, output_path: Path, audio_ext: str,
+                   on_progress=None) -> Path:
+    _log(f"baixando áudio (formato {audio_ext})…")
+    template = str(output_path / "%(title)s.%(ext)s")
+    # Prioriza o stream nativo no formato desejado para evitar re-encode.
+    fmt = f"bestaudio[ext={audio_ext}]/bestaudio/best"
+    cmd = [
+        *_ytdlp_cmd(), "--no-playlist",
+        "-f", fmt,
+        "-x", "--audio-format", audio_ext, "--audio-quality", "0",
+        "--concurrent-fragments", "4",
+        "--newline",
+        "--socket-timeout", "30",
+        *_common_opts(),
+        "-o", template, url,
+    ]
+    _stream_ytdlp(cmd, on_progress, convert_label=f"convertendo para {audio_ext}")
 
     files = sorted(output_path.glob(f"*.{audio_ext}"), key=lambda f: f.stat().st_mtime, reverse=True)
     if not files:
         raise SplitterError(f"Nenhum arquivo .{audio_ext} encontrado após o download.")
+    _log(f"download concluído: {files[0].name}")
+    return files[0]
+
+
+def download_video(url: str, output_path: Path, quality: str = "best",
+                   on_progress=None) -> Path:
+    """Baixa o vídeo (vídeo+áudio) em MP4. quality: best/1080/720/480/360."""
+    _log(f"baixando vídeo (qualidade {quality})…")
+    template = str(output_path / "%(title)s.%(ext)s")
+    if quality and quality != "best":
+        h = re.sub(r"\D", "", quality) or "1080"
+        fmt = (
+            f"bestvideo[height<={h}][ext=mp4]+bestaudio[ext=m4a]/"
+            f"best[height<={h}][ext=mp4]/best[height<={h}]/best"
+        )
+    else:
+        fmt = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+
+    cmd = [
+        *_ytdlp_cmd(), "--no-playlist",
+        "-f", fmt,
+        "--merge-output-format", "mp4",
+        "--concurrent-fragments", "4",
+        "--newline",
+        "--socket-timeout", "30",
+        *_common_opts(),
+        "-o", template, url,
+    ]
+    _stream_ytdlp(cmd, on_progress, convert_label="finalizando vídeo")
+
+    files = sorted(output_path.glob("*.mp4"), key=lambda f: f.stat().st_mtime, reverse=True)
+    if not files:
+        raise SplitterError("Nenhum arquivo .mp4 encontrado após o download.")
     _log(f"download concluído: {files[0].name}")
     return files[0]
 
@@ -249,13 +284,22 @@ def split_by_silence(mp3: Path, split_points: list[float], out_dir: Path,
 
 def process(url: str, out_dir: Path, silence_len: float = 2.0,
             silence_thresh: int = -40, audio_ext: str | None = None,
-            on_progress=None, split: bool = True) -> list[Path]:
+            on_progress=None, split: bool = True,
+            media: str = "audio", video_quality: str = "best") -> list[Path]:
     """Baixa e (opcionalmente) corta. Devolve a lista de arquivos gerados."""
     ext = (audio_ext or AUDIO_EXT).lower()
     out_dir.mkdir(parents=True, exist_ok=True)
 
     if on_progress:
         on_progress(5, "buscando metadados")
+
+    # Modo vídeo: baixa o MP4 completo (vídeo+áudio), sem cortar.
+    if media == "video":
+        video = download_video(url, out_dir, video_quality, on_progress)
+        if on_progress:
+            on_progress(100, "concluído")
+        return [video]
+
     info = get_video_info(url)
     title = sanitize(info.get("title", "audio"))
     chapters = info.get("chapters") or []
