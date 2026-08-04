@@ -4,8 +4,9 @@ import { useState } from "react";
 import SpotifyPanel from "./components/SpotifyPanel";
 import YoutubePanel from "./components/YoutubePanel";
 import DownloadPanel from "./components/DownloadPanel";
+import VideoPanel from "./components/VideoPanel";
 
-type Tab = "spotify" | "youtube" | "download";
+type Tab = "spotify" | "youtube" | "download" | "video";
 
 export default function Home() {
   const [tab, setTab] = useState<Tab>("spotify");
@@ -31,11 +32,18 @@ export default function Home() {
         >
           ⬇ DUB · BAIXAR
         </button>
+        <button
+          onClick={() => setTab("video")}
+          className={`btn-key ${tab === "video" ? "btn-stop" : ""}`}
+        >
+          🎞 VÍDEO
+        </button>
       </div>
 
       {tab === "spotify" && <SpotifyPanel />}
       {tab === "youtube" && <YoutubePanel />}
       {tab === "download" && <DownloadPanel />}
+      {tab === "video" && <VideoPanel />}
     </main>
   );
 }
