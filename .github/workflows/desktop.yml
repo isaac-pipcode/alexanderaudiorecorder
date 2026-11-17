@@ -1,0 +1,55 @@
+# Gera os instaladores do app desktop em cada sistema operacional.
+# - Manual (Actions › Desktop build › Run workflow): instaladores como artifacts.
+# - Tag v* (ex.: git tag v1.0.0 && git push --tags): publica num GitHub Release.
+name: Desktop build
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            args: --win --x64
+          - os: macos-14
+            args: --mac --arm64
+          - os: macos-14
+            args: --mac --x64
+            arch: x64 # baixa o ffmpeg x64 no runner arm64
+          - os: ubuntu-latest
+            args: --linux --x64
+    runs-on: ${{ matrix.os }}
+    env:
+      npm_config_arch: ${{ matrix.arch }}
+      # Sem certificado de assinatura por enquanto (ver docs/PROPOSTA-DESKTOP.md).
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      NEXT_PUBLIC_SPOTIFY_CLIENT_ID: ${{ vars.SPOTIFY_CLIENT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - name: Empacotar
+        run: npx electron-builder ${{ matrix.args }} --publish ${{ startsWith(github.ref, 'refs/tags/v') && 'always' || 'never' }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: instaladores-${{ matrix.os }}-${{ matrix.arch || 'native' }}
+          path: |
+            release/*.exe
+            release/*.dmg
+            release/*.AppImage
+            release/*.deb
+          if-no-files-found: error

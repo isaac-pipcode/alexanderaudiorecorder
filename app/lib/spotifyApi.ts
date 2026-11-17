@@ -5,6 +5,7 @@ export type Track = {
   title: string;
   artist: string;
   album: string;
+  coverUrl?: string;
   durationSec: number;
   isPlaying: boolean;
 };
@@ -30,6 +31,7 @@ export async function getCurrentTrack(): Promise<Track | null> {
     title: item.name,
     artist: item.artists.map((a: { name: string }) => a.name).join(", "),
     album: item.album?.name ?? "",
+    coverUrl: item.album?.images?.[0]?.url,
     durationSec: item.duration_ms / 1000,
     isPlaying: Boolean(data.is_playing),
   };

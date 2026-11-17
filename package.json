@@ -1,27 +1,104 @@
 {
   "name": "alexanderaudiorecorder",
-  "version": "0.1.0",
+  "productName": "Alexander Audio Tools",
+  "desktopName": "alexander-audio-tools.desktop",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint"
+    "dev": "concurrently -k -n next,electron \"next dev -H 127.0.0.1 -p 47816\" \"npm:dev:electron\"",
+    "dev:electron": "tsc -p electron/tsconfig.json && wait-on http://127.0.0.1:47816 && cross-env AAT_DEV_URL=http://127.0.0.1:47816 electron .",
+    "build:ui": "next build",
+    "build:electron": "tsc -p electron/tsconfig.json",
+    "build": "npm run build:ui && npm run build:electron",
+    "start": "npm run build && electron .",
+    "dist": "npm run build && electron-builder",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:linux": "npm run build && electron-builder --linux",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p electron/tsconfig.json"
   },
   "dependencies": {
-    "@ffmpeg/ffmpeg": "^0.12.10",
-    "@ffmpeg/util": "^0.12.1",
-    "next": "14.2.5",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "ffmpeg-static": "^5.3.0"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "autoprefixer": "^10.4.19",
+    "concurrently": "^10.0.7",
+    "cross-env": "^10.1.0",
+    "electron": "^38.8.6",
+    "electron-builder": "^26.18.0",
+    "next": "14.2.5",
     "postcss": "^8.4.39",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "tailwindcss": "^3.4.6",
-    "typescript": "^5.5.3"
+    "typescript": "^5.5.3",
+    "wait-on": "^9.5.1"
+  },
+  "description": "Alexander Audio Tools — app desktop para gravar o Spotify e baixar/cortar áudio e vídeo do YouTube.",
+  "author": "Alexander Audio Tools",
+  "main": "dist-electron/main.js",
+  "build": {
+    "appId": "com.alexanderaudiotools.app",
+    "productName": "Alexander Audio Tools",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist-electron/**",
+      "out/**",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/ffmpeg-static/**"
+    ],
+    "artifactName": "AlexanderAudioTools-${version}-${os}-${arch}.${ext}",
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg"
+        }
+      ],
+      "category": "public.app-category.music",
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Gravar o áudio de um dispositivo de entrada (ex.: BlackHole) na aba Spotify.",
+        "NSAudioCaptureUsageDescription": "Gravar o áudio do sistema na aba Spotify.",
+        "NSScreenCaptureUsageDescription": "O macOS exige esta permissão para capturar o áudio do sistema."
+      }
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "AudioVideo",
+      "maintainer": "Alexander Audio Tools",
+      "executableName": "alexander-audio-tools"
+    },
+    "publish": {
+      "provider": "github"
+    }
   }
 }

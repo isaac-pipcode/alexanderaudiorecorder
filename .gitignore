@@ -9,7 +9,7 @@
 next-env.d.ts
 
 # production
-/build
+!/build/entitlements.mac.plist
 
 # misc
 .DS_Store
@@ -30,8 +30,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 
-# python backend
-backend/__pycache__/
-backend/.venv/
-backend/output/
-*.pyc
+
+# electron
+/dist-electron/
+/release/

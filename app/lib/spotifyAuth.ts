@@ -1,7 +1,16 @@
-// Spotify OAuth via PKCE — roda 100% no navegador, sem client secret.
-// Substitui o spotipy/SpotifyOAuth do script original de forma segura.
+// Spotify OAuth via PKCE — roda no renderer do app, sem client secret.
+// No desktop, a origem é http://127.0.0.1:47816 (servidor local do Electron),
+// então a Redirect URI de loopback é http://127.0.0.1:47816/spotify.
 
-const CLIENT_ID = process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID ?? "";
+// O Client ID vem dos Ajustes do app (fallback: variável de build).
+let CLIENT_ID = process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID ?? "";
+export function setClientId(id: string) {
+  if (id && id !== CLIENT_ID) {
+    // Token de outro app não serve para este Client ID.
+    if (CLIENT_ID) localStorage.removeItem("spotify_token");
+    CLIENT_ID = id;
+  }
+}
 const SCOPES = "user-read-playback-state user-read-currently-playing";
 const TOKEN_KEY = "spotify_token";
 const VERIFIER_KEY = "spotify_pkce_verifier";
@@ -57,7 +66,7 @@ export async function login(): Promise<void> {
 export async function handleRedirectCallback(): Promise<boolean> {
   const url = new URL(window.location.href);
   const code = url.searchParams.get("code");
-  if (!code) return false;
+  if (!code || !CLIENT_ID) return false;
 
   const verifier = sessionStorage.getItem(VERIFIER_KEY);
   if (!verifier) return false;
