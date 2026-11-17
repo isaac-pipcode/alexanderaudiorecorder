@@ -87,7 +87,7 @@ function createWindow() {
     return { action: "deny" };
   });
 
-  void win.loadURL(ORIGIN);
+  void win.loadURL(`${ORIGIN}/app`);
   win.on("closed", () => { win = null; });
 }
 
@@ -145,6 +145,12 @@ function registerIpc() {
   handle("shell:openOutputDir", () => {
     fs.mkdirSync(getSettings().outputDir, { recursive: true });
     return shell.openPath(getSettings().outputDir);
+  });
+  handle("shell:openLicenses", () => {
+    const dir = app.isPackaged
+      ? path.join(process.resourcesPath, "licenses")
+      : path.join(app.getAppPath(), "THIRD-PARTY-NOTICES.md");
+    return shell.openPath(dir);
   });
   handle("shell:openExternal", (url: string) => {
     if (/^https:\/\//i.test(url)) return shell.openExternal(url);

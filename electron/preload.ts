@@ -24,5 +24,6 @@ contextBridge.exposeInMainWorld("aat", {
   showInFolder: (p: string) => invoke("shell:showInFolder", p),
   openPath: (p: string) => invoke("shell:openPath", p),
   openOutputDir: () => invoke("shell:openOutputDir"),
+  openLicenses: () => invoke("shell:openLicenses"),
   openExternal: (url: string) => invoke("shell:openExternal", url),
 });

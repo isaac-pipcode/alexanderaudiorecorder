@@ -80,7 +80,8 @@ chamando binários nativos.**
 | `backend/main.py` (FastAPI, jobs em memória, `/files`) | `electron/youtube.ts`: jobs no main, progresso por evento IPC, cancelamento real (mata a árvore de processos) |
 | `backend/splitter.py` | Portado para `youtube.ts`, com as correções da seção 4 |
 | Cookies via `YT_COOKIES_B64` / `/debug/cookies` | `--cookies-from-browser` opcional (Firefox, Chrome, Edge, Brave, Safari…), quase nunca necessário |
-| `render.yaml`, `backend/Dockerfile`, `vercel.json` | Removidos |
+| `render.yaml`, `backend/Dockerfile` | Removidos |
+| Site no Vercel com a ferramenta | Página pública de **download** (`/`), que lê o último GitHub Release e sugere o instalador do sistema do visitante. O app desktop usa a rota `/app`. |
 | `ffmpeg.wasm` via unpkg | `ffmpeg-static` nativo (`electron/recorder.ts`) |
 | Download pelo navegador (blob/URL) | Gravação direta em pasta organizada + botões Abrir / Mostrar na pasta |
 | `NEXT_PUBLIC_*` no build | Client ID do Spotify configurado no app (aba Ajustes) |
@@ -131,9 +132,9 @@ chamando binários nativos.**
 |------|----------|---------------|
 | **Áudio do sistema no macOS** | O Electron documenta loopback **só no Windows**. Ativei flags do Chromium (`MacLoopbackAudioForScreenShare`, `MacCatapLoopbackAudioForScreenShare`) que devem habilitá-lo no macOS 13+/14.2+, mas **não verifiquei em hardware Apple**. | Testar num Mac. Enquanto isso, a UI rotula a opção como experimental e prioriza o BlackHole quando ele existe. |
 | **Linux sem loopback** | Usa dispositivos “Monitor of …” (PulseAudio/PipeWire). Não testado com áudio real (container sem som). | Testar em desktop Linux. |
-| **Assinatura de código** | Instaladores não assinados: SmartScreen no Windows e Gatekeeper no macOS mostram avisos. Não confirmei se o electron-builder faz assinatura ad-hoc no build arm64 sem identidade; o README documenta `xattr -cr` como contorno. | Apple Developer (US$ 99/ano) para notarizar. Certificado Windows OV/EV ou Azure Trusted Signing. |
+| **Assinatura de código** | **Decisão: sem certificado pago.** macOS: assinatura **ad-hoc** (`mac.identity: "-"`), gratuita e obrigatória para o app abrir no Apple Silicon; o electron-builder 26 não faz isso sozinho. O Gatekeeper ainda avisa no primeiro uso (contorno: *Privacidade e Segurança › Abrir Mesmo Assim*). Windows: SmartScreen avisa (*Mais informações › Executar assim mesmo*). Efeito colateral: a assinatura ad-hoc muda a cada versão, então o macOS pode pedir de novo as permissões de áudio/tela depois de atualizar. | Instruções na página de download e no README. |
 | **Tamanho** | ~110–150 MB por instalador. O AppImage tem 147 MB, dos quais 77 MB são o ffmpeg estático. | Aceitável. Para reduzir: build de ffmpeg só com os codecs usados. |
-| **Licença** | O binário do ffmpeg-static é GPL. Distribuí-lo obriga a oferecer o código-fonte correspondente. | Incluir aviso e link para o fonte nos Releases. |
+| **Licença (GPL do FFmpeg)** | **Resolvido:** o instalador inclui `licenses/THIRD-PARTY-NOTICES.md`, o texto da licença e as informações do build do ffmpeg (botão *Ajustes › Licenças*). O CI anexa `ffmpeg-source-<versão>.tar.xz` a cada Release, baixado **antes** de empacotar (se falhar, nada é publicado sem o fonte). Há também oferta escrita (GPLv3 §6) para as fontes das bibliotecas incluídas no binário (x264, x265 etc.). | Atender pedidos de fonte, se houver, pelas issues. |
 | **Transcodificação dupla no Spotify** | A captura sai em Opus (MediaRecorder) e é reconvertida para MP3/FLAC. Gravar em FLAC não recupera o que o Opus descartou. | Próximo passo: capturar PCM via `AudioWorklet` e gravar WAV intermediário sem perdas. |
 | **Auto-update do app** | Não implementado; o `publish: github` já gera `latest*.yml`. | Adicionar `electron-updater` quando houver assinatura (no macOS ele exige app assinado). |
 | **Porta 47816 ocupada** | O app avisa e encerra. A porta é fixa porque a Redirect URI do Spotify depende dela. | Raro. Se ocorrer com frequência, oferecer porta alternativa e mostrar a URI correspondente. |

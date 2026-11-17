@@ -66,6 +66,7 @@ export type DesktopApi = {
   showInFolder(path: string): Promise<void>;
   openPath(path: string): Promise<string>;
   openOutputDir(): Promise<string>;
+  openLicenses(): Promise<string>;
   openExternal(url: string): Promise<void>;
 };
 

@@ -147,6 +147,9 @@ export default function SettingsPanel({ onChange }: { onChange?: (s: Settings) =
           {updating ? "atualizando…" : tools?.ytdlp ? "⟳ ATUALIZAR YT-DLP" : "⬇ INSTALAR YT-DLP"}
         </button>
         {toolMsg && <p className="mt-1 text-xs text-ink/70">{toolMsg}</p>}
+        <button onClick={() => api.openLicenses()} className="btn-key mt-2 ml-2">
+          § LICENÇAS
+        </button>
         <p className="mt-1 text-xs text-ink/60">
           Se downloads do YouTube começarem a falhar, atualize o yt-dlp primeiro — o
           YouTube muda com frequência e o yt-dlp acompanha.

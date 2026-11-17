@@ -17,13 +17,16 @@ A proposta técnica da migração web → desktop está em
 
 ## Instalar (usuário final)
 
-Baixe o instalador da página **Releases** do repositório:
+Página de download: <https://alexanderaudiotools.vercel.app> (detecta o sistema
+e lista todos os instaladores do último Release). O programa não tem certificado
+pago; os avisos abaixo são esperados na primeira abertura:
 
 - **Windows:** `AlexanderAudioTools-x.y.z-win-x64.exe`. Sem assinatura de código,
   o SmartScreen avisa: clique em *Mais informações › Executar assim mesmo*.
-- **macOS:** `…-mac-arm64.dmg` (Apple Silicon) ou `…-mac-x64.dmg` (Intel). Sem
-  notarização: na primeira vez, clique com o botão direito no app › *Abrir*. Se o
-  macOS disser que o app “está danificado”, rode no Terminal:
+- **macOS:** `…-mac-arm64.dmg` (Apple Silicon) ou `…-mac-x64.dmg` (Intel). Com
+  assinatura ad-hoc e sem notarização: abra o app, clique em OK no aviso e vá em
+  *Ajustes do Sistema › Privacidade e Segurança › Abrir Mesmo Assim*. Se o macOS
+  disser que o app “está danificado”, rode no Terminal:
   ```bash
   xattr -cr "/Applications/Alexander Audio Tools.app"
   ```
@@ -67,12 +70,28 @@ npm run dist
 
 Gera o instalador da plataforma atual em `release/`. Para todas as plataformas,
 use o workflow **Desktop build** (GitHub Actions): manualmente gera artifacts;
-ao enviar uma tag `v*`, publica um Release.
+ao enviar uma tag `v*`, publica um Release (com o código-fonte do FFmpeg
+anexado, exigência da GPL), que a página de download passa a mostrar.
+
+Os downloads anônimos exigem que os Releases estejam num repositório
+**público**. Se o código continuar privado, crie um repositório público só para
+os instaladores e configure no repositório de código:
+- variável `RELEASES_REPO` (ex.: `isaac-pipcode/alexanderaudiotools-releases`);
+- secret `RELEASES_TOKEN` (token fine-grained com *Contents: read and write* no repositório público);
+- no Vercel, a variável `NEXT_PUBLIC_RELEASES_REPO` com o mesmo valor.
+
+### Página de download (Vercel)
+
+A raiz `/` do export do Next é a página pública de download; `/app` é a interface
+do programa (só funciona dentro do Electron). O `vercel.json` instala sem scripts
+de pós-instalação (não baixa Electron nem ffmpeg) e roda só `next build`.
 
 ### Estrutura
 
 ```
 app/                 UI (Next.js, exportada como estático em out/)
+  page.tsx           página pública de download (/)
+  app/page.tsx       interface do programa (/app)
   components/        painéis de cada aba + JobView/Shell/SettingsPanel
   lib/desktop.ts     tipos da ponte window.aat
   lib/useJob.ts      hook de jobs (progresso via IPC)
