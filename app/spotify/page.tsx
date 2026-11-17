@@ -1,13 +1,7 @@
-"use client";
+import Shell from "../components/Shell";
 
-import SpotifyPanel from "../components/SpotifyPanel";
-
-// Esta rota também é a Redirect URI do OAuth do Spotify.
+// Esta rota é a Redirect URI do OAuth do Spotify (http://127.0.0.1:47816/spotify).
 // O SpotifyPanel trata o ?code=... automaticamente ao montar.
 export default function SpotifyPage() {
-  return (
-    <main>
-      <SpotifyPanel />
-    </main>
-  );
+  return <Shell initialTab="spotify" />;
 }

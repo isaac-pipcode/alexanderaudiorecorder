@@ -1,0 +1,81 @@
+# Gera os instaladores do app desktop em cada sistema operacional.
+# - Manual (Actions › Desktop build › Run workflow): instaladores como artifacts.
+# - Tag v* (ex.: git tag v1.0.0 && git push --tags): publica num GitHub Release,
+#   que alimenta a página de download (alexanderaudiotools.vercel.app).
+#
+# Destino da publicação:
+#   - padrão: este repositório (exige que ele seja PÚBLICO para downloads anônimos);
+#   - ou um repositório público só de releases: defina a variável RELEASES_REPO
+#     (ex.: isaac-pipcode/alexanderaudiotools-releases) e o secret RELEASES_TOKEN
+#     (token fine-grained com "Contents: read and write" nesse repositório).
+name: Desktop build
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            args: --win --x64
+          - os: macos-14
+            args: --mac --arm64
+          - os: macos-14
+            args: --mac --x64
+            arch: x64 # baixa o ffmpeg x64 no runner arm64
+          - os: ubuntu-latest
+            args: --linux --x64
+    runs-on: ${{ matrix.os }}
+    env:
+      npm_config_arch: ${{ matrix.arch }}
+      GH_TOKEN: ${{ secrets.RELEASES_TOKEN || secrets.GITHUB_TOKEN }}
+      RELEASES_REPO: ${{ vars.RELEASES_REPO || github.repository }}
+      NEXT_PUBLIC_SPOTIFY_CLIENT_ID: ${{ vars.SPOTIFY_CLIENT_ID }}
+      IS_TAG: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      # GPLv3: o código-fonte do FFmpeg distribuído acompanha cada Release.
+      # Baixado ANTES de empacotar: se falhar, nada é publicado sem o fonte.
+      - name: Código-fonte do FFmpeg
+        run: |
+          VER=$(node -e "const {execFileSync}=require('child_process');const o=execFileSync(require('ffmpeg-static'),['-version']).toString();console.log((o.match(/ffmpeg version n?(\d+\.\d+(?:\.\d+)?)/)||[])[1]||'')")
+          echo "FFmpeg $VER"
+          [ -n "$VER" ] || { echo "versão do ffmpeg não detectada"; exit 1; }
+          mkdir -p ffmpeg-src
+          curl -fsSL -o "ffmpeg-src/ffmpeg-source-$VER.tar.xz" "https://ffmpeg.org/releases/ffmpeg-$VER.tar.xz"
+      - name: Empacotar (assinatura ad-hoc no macOS, sem certificado pago)
+        run: |
+          OWNER="${RELEASES_REPO%%/*}"; REPO="${RELEASES_REPO##*/}"
+          npx electron-builder ${{ matrix.args }} \
+            -c.publish.owner="$OWNER" -c.publish.repo="$REPO" \
+            --publish "$([ "$IS_TAG" = true ] && echo always || echo never)"
+      - name: Anexar fonte do FFmpeg ao Release
+        if: env.IS_TAG == 'true'
+        run: gh release upload "$GITHUB_REF_NAME" ffmpeg-src/*.tar.xz --repo "$RELEASES_REPO" --clobber
+      - uses: actions/upload-artifact@v4
+        with:
+          name: instaladores-${{ matrix.os }}-${{ matrix.arch || 'native' }}
+          path: |
+            release/*.exe
+            release/*.dmg
+            release/*.AppImage
+            release/*.deb
+          if-no-files-found: error

@@ -16,7 +16,7 @@ const marker = Permanent_Marker({
 
 export const metadata: Metadata = {
   title: "Alexander Audio Tools",
-  description: "Grave fitas do Spotify e corte fitas do YouTube. Som analógico, jeitão dos anos 80.",
+  description: "App desktop: grave fitas do Spotify e corte fitas do YouTube. Som analógico, jeitão dos anos 80.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

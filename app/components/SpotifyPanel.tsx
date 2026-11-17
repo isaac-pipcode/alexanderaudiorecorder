@@ -7,10 +7,10 @@ import {
   isLoggedIn,
   login,
   logout,
+  setClientId,
 } from "../lib/spotifyAuth";
 import { getCurrentTrack, type Track } from "../lib/spotifyApi";
-import { sanitize, downloadBlob } from "../lib/util";
-import { toMp3 } from "../lib/ffmpeg";
+import { basename, desktop } from "../lib/desktop";
 import VuMeter from "./VuMeter";
 
 type Recording = {
@@ -18,29 +18,109 @@ type Recording = {
   title: string;
   artist: string;
   album: string;
-  blob: Blob; // webm/opus
-  mp3?: Blob;
-  converting?: boolean;
+  partial: boolean;
+  status: "saving" | "saved" | "error";
+  path?: string;
+  error?: string;
 };
 
-const POLL_MS = 1500;
+type Source = { id: string; label: string };
 
-export default function SpotifyPanel() {
+const POLL_MS = 1500;
+const SYSTEM = "system";
+
+export default function SpotifyPanel({ onOpenSettings }: { onOpenSettings?: () => void }) {
+  const api = desktop();
+  const [ready, setReady] = useState(false);
   const [authed, setAuthed] = useState(false);
   const [recording, setRecording] = useState(false);
   const [current, setCurrent] = useState<Track | null>(null);
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [sources, setSources] = useState<Source[]>([]);
+  const [source, setSource] = useState<string>("");
 
   const streamRef = useRef<MediaStream | null>(null);
   const mediaRecRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<BlobPart[]>([]);
   const currentTrackRef = useRef<Track | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Client ID vem dos Ajustes; só então tratamos o ?code= do redirect OAuth.
   useEffect(() => {
-    handleRedirectCallback().finally(() => setAuthed(isLoggedIn()));
-  }, []);
+    (async () => {
+      const s = await api?.getSettings();
+      if (s?.spotifyClientId) setClientId(s.spotifyClientId);
+      await handleRedirectCallback().catch(() => false);
+      setAuthed(isLoggedIn());
+      setReady(true);
+    })();
+  }, [api]);
+
+  // Fontes de áudio: loopback do sistema (Win/macOS) + dispositivos de entrada
+  // (no Linux, escolha um "Monitor of …"; no macOS, BlackHole/Loopback também servem).
+  const loadSources = useCallback(async () => {
+    const list: Source[] = [];
+    if (api?.platform === "win32") list.push({ id: SYSTEM, label: "🔊 Áudio do sistema (tudo que toca no computador)" });
+    if (api?.platform === "darwin") list.push({ id: SYSTEM, label: "🔊 Áudio do sistema (experimental no macOS)" });
+    try {
+      // pede permissão uma vez para os rótulos dos dispositivos aparecerem
+      const tmp = await navigator.mediaDevices.getUserMedia({ audio: true });
+      tmp.getTracks().forEach((t) => t.stop());
+    } catch { /* sem permissão: rótulos vazios */ }
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    for (const d of devices) {
+      if (d.kind === "audioinput" && d.deviceId !== "default" && d.deviceId !== "communications") {
+        list.push({ id: d.deviceId, label: `🎙 ${d.label || "Entrada de áudio"}` });
+      }
+    }
+    setSources(list);
+    setSource((cur) => {
+      if (cur && list.some((s) => s.id === cur)) return cur;
+      const monitor = list.find((s) => /monitor|blackhole|loopback|stereo mix|mixagem/i.test(s.label));
+      const system = list.find((s) => s.id === SYSTEM);
+      // No macOS, um dispositivo virtual (BlackHole) é mais confiável que o loopback.
+      const pick = api?.platform === "darwin" ? (monitor ?? system) : (system ?? monitor);
+      return (pick ?? list[0])?.id ?? "";
+    });
+  }, [api]);
+
+  useEffect(() => { if (authed) void loadSources(); }, [authed, loadSources]);
+
+  const saveSegment = useCallback(async (blob: Blob, track: Track, startedAt: number) => {
+    const elapsed = (Date.now() - startedAt) / 1000;
+    const rec: Recording = {
+      id: `${track.id}-${startedAt}`,
+      title: track.title,
+      artist: track.artist,
+      album: track.album,
+      partial: elapsed < track.durationSec * 0.9,
+      status: "saving",
+    };
+    setRecordings((prev) => [rec, ...prev]);
+    try {
+      const path = await api!.saveRecording(await blob.arrayBuffer(), {
+        title: track.title, artist: track.artist, album: track.album, coverUrl: track.coverUrl,
+      });
+      setRecordings((prev) => prev.map((r) => (r.id === rec.id ? { ...r, status: "saved", path } : r)));
+    } catch (e) {
+      setRecordings((prev) => prev.map((r) =>
+        r.id === rec.id ? { ...r, status: "error", error: e instanceof Error ? e.message : String(e) } : r));
+    }
+  }, [api]);
+
+  const startSegmentRecorder = useCallback((stream: MediaStream, track: Track) => {
+    const chunks: BlobPart[] = [];
+    const startedAt = Date.now();
+    const mr = new MediaRecorder(stream, { mimeType: pickMime(), audioBitsPerSecond: 256_000 });
+    mr.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+    mr.onstop = () => {
+      const blob = new Blob(chunks, { type: mr.mimeType });
+      if (blob.size > 0) void saveSegment(blob, track, startedAt);
+    };
+    mr.start(1000);
+    mediaRecRef.current = mr;
+    currentTrackRef.current = track;
+  }, [saveSegment]);
 
   const flushCurrent = useCallback(() => {
     const rec = mediaRecRef.current;
@@ -48,35 +128,8 @@ export default function SpotifyPanel() {
     currentTrackRef.current = null;
   }, []);
 
-  const startSegmentRecorder = useCallback((stream: MediaStream, track: Track) => {
-    chunksRef.current = [];
-    const mr = new MediaRecorder(stream, { mimeType: pickMime() });
-    mr.ondataavailable = (e) => {
-      if (e.data.size > 0) chunksRef.current.push(e.data);
-    };
-    mr.onstop = () => {
-      const blob = new Blob(chunksRef.current, { type: mr.mimeType });
-      chunksRef.current = [];
-      if (blob.size > 0) {
-        setRecordings((prev) => [
-          {
-            id: `${track.id}-${Date.now()}`,
-            title: track.title,
-            artist: track.artist,
-            album: track.album,
-            blob,
-          },
-          ...prev,
-        ]);
-      }
-    };
-    mr.start();
-    mediaRecRef.current = mr;
-    currentTrackRef.current = track;
-  }, []);
-
   const tick = useCallback(async () => {
-    const track = await getCurrentTrack();
+    const track = await getCurrentTrack().catch(() => null);
     setCurrent(track);
     const stream = streamRef.current;
     if (!stream) return;
@@ -85,39 +138,12 @@ export default function SpotifyPanel() {
       if (mediaRecRef.current?.state === "recording") flushCurrent();
       return;
     }
-
     const prev = currentTrackRef.current;
     if (!prev || prev.id !== track.id) {
       if (mediaRecRef.current?.state === "recording") mediaRecRef.current.stop();
       startSegmentRecorder(stream, track);
     }
   }, [flushCurrent, startSegmentRecorder]);
-
-  const start = useCallback(async () => {
-    setError(null);
-    try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
-        audio: true,
-      });
-      if (stream.getAudioTracks().length === 0) {
-        stream.getTracks().forEach((t) => t.stop());
-        setError(
-          "Nenhuma trilha de áudio capturada. Ao compartilhar, marque a opção " +
-            "“Compartilhar áudio da aba” (ou compartilhe a tela inteira com áudio do sistema)."
-        );
-        return;
-      }
-      stream.getVideoTracks().forEach((t) => t.stop());
-      streamRef.current = stream;
-      setRecording(true);
-      stream.getAudioTracks()[0].onended = () => stop();
-      await tick();
-      pollRef.current = setInterval(tick, POLL_MS);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Falha ao iniciar a captura de áudio.");
-    }
-  }, [tick]);
 
   const stop = useCallback(() => {
     if (pollRef.current) clearInterval(pollRef.current);
@@ -129,42 +155,60 @@ export default function SpotifyPanel() {
     setCurrent(null);
   }, [flushCurrent]);
 
+  const openStream = async (): Promise<MediaStream> => {
+    if (source === SYSTEM) {
+      // O processo principal responde com loopback do sistema, sem diálogo.
+      const s = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+      s.getVideoTracks().forEach((t) => { t.stop(); s.removeTrack(t); });
+      return s;
+    }
+    return navigator.mediaDevices.getUserMedia({
+      audio: {
+        deviceId: { exact: source },
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+        channelCount: 2,
+      },
+    });
+  };
+
+  const start = async () => {
+    setError(null);
+    try {
+      const stream = await openStream();
+      if (stream.getAudioTracks().length === 0) {
+        stream.getTracks().forEach((t) => t.stop());
+        setError("Nenhuma trilha de áudio capturada. Escolha outra fonte de áudio.");
+        return;
+      }
+      streamRef.current = stream;
+      setRecording(true);
+      stream.getAudioTracks()[0].onended = () => stop();
+      await tick();
+      pollRef.current = setInterval(tick, POLL_MS);
+    } catch (e) {
+      setError(
+        (e instanceof Error ? e.message : "Falha ao iniciar a captura de áudio.") +
+        (api?.platform === "darwin"
+          ? " — no macOS, libere “Gravação de Tela e Áudio do Sistema” para o app em Ajustes do Sistema › Privacidade."
+          : ""));
+    }
+  };
+
   useEffect(() => () => stop(), [stop]);
 
-  const convert = useCallback(async (rec: Recording) => {
-    setRecordings((prev) =>
-      prev.map((r) => (r.id === rec.id ? { ...r, converting: true } : r))
-    );
-    try {
-      const mp3 = await toMp3(rec.blob, {
-        title: rec.title,
-        artist: rec.artist,
-        album: rec.album,
-      });
-      setRecordings((prev) =>
-        prev.map((r) => (r.id === rec.id ? { ...r, mp3, converting: false } : r))
-      );
-    } catch {
-      setRecordings((prev) =>
-        prev.map((r) => (r.id === rec.id ? { ...r, converting: false } : r))
-      );
-      setError("Falha na conversão para MP3. Você ainda pode baixar o WebM.");
-    }
-  }, []);
+  if (!ready) return <div className="panel text-sm">carregando…</div>;
 
   if (!isConfigured()) {
     return (
       <div className="panel">
         <h2 className="label-marker text-2xl text-rust">Falta configurar</h2>
         <p className="mt-2 text-sm">
-          Defina <code className="text-rust">NEXT_PUBLIC_SPOTIFY_CLIENT_ID</code> nas
-          variáveis de ambiente do Vercel. Crie um app em{" "}
-          <a className="text-rust underline" href="https://developer.spotify.com/dashboard" target="_blank" rel="noreferrer">
-            developer.spotify.com
-          </a>{" "}
-          e adicione a Redirect URI{" "}
-          <code>{typeof window !== "undefined" ? `${window.location.origin}/spotify` : "/spotify"}</code>.
+          Informe o <b>Client ID</b> do seu app Spotify na aba Ajustes. É gratuito e
+          leva dois minutos; não precisa de client secret.
         </p>
+        <button onClick={onOpenSettings} className="btn-key btn-rec mt-4">⚙ ABRIR AJUSTES</button>
       </div>
     );
   }
@@ -187,23 +231,20 @@ export default function SpotifyPanel() {
           <div className="flex items-center justify-between">
             <span className="label-marker text-xl text-ink">Lado A · Gravação</span>
             <button
-              onClick={() => { logout(); setAuthed(false); }}
-              className="text-xs underline text-ink/60 hover:text-ink"
+              onClick={() => { stop(); logout(); setAuthed(false); }}
+              className="text-xs text-ink/60 underline hover:text-ink"
             >
               ejetar fita
             </button>
           </div>
 
-          {/* ── A FITA CASSETE ── */}
           <div className="cassette mt-4">
             <div className="flex items-center justify-between gap-4 px-2">
               <div className={`reel ${recording && current?.isPlaying ? "reel-spin" : ""}`} />
               <div className="tape-window flex-1 text-center">
                 {recording ? (
                   current?.isPlaying ? (
-                    <span className="label-marker text-mustard">
-                      ▶ {current.artist} — {current.title}
-                    </span>
+                    <span className="label-marker text-mustard">▶ {current.artist} — {current.title}</span>
                   ) : (
                     <span className="text-sm text-paper/60">▮▮ aguardando o play…</span>
                   )
@@ -213,34 +254,54 @@ export default function SpotifyPanel() {
               </div>
               <div className={`reel ${recording && current?.isPlaying ? "reel-spin" : ""}`} />
             </div>
-
-            {/* VU meter analógico estéreo */}
             <div className="mt-4">
               <VuMeter stream={streamRef.current} active={recording} />
             </div>
-
             <div className="mt-3 text-center text-[10px] tracking-[0.3em] text-paper/40">
               NORMAL · POSITION · TYPE&nbsp;I &nbsp;—&nbsp; 90&nbsp;MIN
             </div>
           </div>
 
+          <label className="mt-4 block text-sm">
+            <span className="label-marker text-ink">Fonte de áudio</span>
+            <div className="mt-1 flex gap-2">
+              <select value={source} onChange={(e) => setSource(e.target.value)}
+                      disabled={recording} className="field">
+                {sources.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+              </select>
+              <button onClick={loadSources} disabled={recording} className="btn-key shrink-0" title="Atualizar lista">⟳</button>
+            </div>
+          </label>
+          {api?.platform === "darwin" && (
+            <p className="mt-1 text-xs text-ink/60">
+              macOS: se “Áudio do sistema” gravar silêncio, instale o driver gratuito
+              BlackHole 2ch, crie um “Dispositivo de Saída Múltipla” (alto-falantes +
+              BlackHole) no Configuração de Áudio e MIDI, e escolha BlackHole aqui.
+            </p>
+          )}
+          {api?.platform === "linux" && (
+            <p className="mt-1 text-xs text-ink/60">
+              Linux: escolha o dispositivo “Monitor of …” da sua saída de som
+              (PulseAudio/PipeWire) para gravar o que está tocando.
+            </p>
+          )}
+
           <ol className="mt-4 list-decimal space-y-1 pl-5 text-sm">
-            <li>Abra o Spotify (web ou app) e dê o play.</li>
-            <li>Aperte REC e compartilhe a aba/tela <b>com áudio</b>.</li>
-            <li>Cada música vira uma faixa separada, etiquetada sozinha.</li>
+            <li>Abra o Spotify (app ou web) e dê o play.</li>
+            <li>Aperte REC. Cada música vira um arquivo separado, etiquetado e com capa.</li>
+            <li>Evite outros sons no computador durante a gravação (o áudio do sistema é capturado inteiro).</li>
           </ol>
 
           <div className="mt-4 flex gap-3">
             {!recording ? (
-              <button onClick={start} className="btn-key btn-rec">⦿ REC</button>
+              <button onClick={start} disabled={!source} className="btn-key btn-rec">⦿ REC</button>
             ) : (
               <button onClick={stop} className="btn-key btn-stop">■ STOP</button>
             )}
+            <button onClick={() => api?.openOutputDir()} className="btn-key">📂 PASTA</button>
           </div>
 
-          {error && (
-            <p className="mt-4 border-2 border-rust bg-rust/10 p-3 text-sm text-ink">{error}</p>
-          )}
+          {error && <p className="error-box mt-4">{error}</p>}
 
           {recordings.length > 0 && (
             <div className="mt-6">
@@ -251,29 +312,20 @@ export default function SpotifyPanel() {
                 {recordings.map((r, i) => (
                   <li key={r.id} className="flex items-center justify-between gap-3 text-sm">
                     <div className="min-w-0">
-                      <span className="label-marker mr-2 text-rust">{i + 1}.</span>
+                      <span className="label-marker mr-2 text-rust">{recordings.length - i}.</span>
                       <span className="font-bold">{r.artist} — {r.title}</span>
-                      <span className="ml-2 text-ink/50">({r.album})</span>
+                      {r.partial && <span className="ml-2 text-xs text-rust" title="Gravação começou ou terminou no meio da música">(incompleta)</span>}
+                      {r.status === "error" && <div className="text-xs text-rust">{r.error}</div>}
+                      {r.path && <div className="truncate text-xs text-ink/50">{basename(r.path)}</div>}
                     </div>
                     <div className="flex shrink-0 gap-2">
-                      {r.mp3 ? (
-                        <button
-                          onClick={() => downloadBlob(r.mp3!, `${sanitize(`${r.artist} - ${r.title}`)}.mp3`)}
-                          className="btn-key"
-                        >
-                          ⬇ MP3
-                        </button>
-                      ) : (
-                        <button onClick={() => convert(r)} disabled={r.converting} className="btn-key">
-                          {r.converting ? "gravando…" : "→ MP3"}
-                        </button>
+                      {r.status === "saving" && <span className="text-xs">gravando no disco…</span>}
+                      {r.path && (
+                        <>
+                          <button onClick={() => api?.openPath(r.path!)} className="btn-key">▶</button>
+                          <button onClick={() => api?.showInFolder(r.path!)} className="btn-key">📂</button>
+                        </>
                       )}
-                      <button
-                        onClick={() => downloadBlob(r.blob, `${sanitize(`${r.artist} - ${r.title}`)}.webm`)}
-                        className="btn-key"
-                      >
-                        ⬇ WEBM
-                      </button>
                     </div>
                   </li>
                 ))}
@@ -289,9 +341,7 @@ export default function SpotifyPanel() {
 function pickMime(): string {
   const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg"];
   for (const c of candidates) {
-    if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(c)) {
-      return c;
-    }
+    if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(c)) return c;
   }
   return "audio/webm";
 }

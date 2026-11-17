@@ -1,45 +1,110 @@
-# Alexander Audio Recorder
+# Alexander Audio Tools — app desktop
 
-Interface web única para **gravar músicas do Spotify** e **baixar/cortar áudio do
-YouTube** em arquivos MP3 organizados.
+App para **Windows, macOS e Linux** que grava músicas do Spotify e baixa/corta
+áudio e vídeo do YouTube em arquivos organizados, com metadados e capa.
+Tudo roda no computador do usuário: não há servidor, Render nem Vercel.
 
-Duas abas, dois motores:
+| Aba | O que faz | Motor |
+|-----|-----------|-------|
+| **REC · Fita K7** | Grava o que toca no Spotify; uma faixa por arquivo (MP3 320k / M4A / FLAC), etiquetada e com capa | Captura de áudio do Chromium + Spotify Web API + ffmpeg nativo |
+| **Splice · YouTube** | Corta um vídeo em faixas, por capítulos ou silêncios | yt-dlp + ffmpeg |
+| **Dub · Baixar** | Baixa a música inteira (ou a playlist) | yt-dlp |
+| **Vídeo** | Baixa o MP4 (até 4K), com capítulos e thumbnail | yt-dlp + ffmpeg |
+| **Ajustes** | Pasta de saída, Client ID do Spotify, cookies do navegador, atualização do yt-dlp | — |
 
-| Aba | Onde processa | Deploy |
-|-----|---------------|--------|
-| **Spotify** | 100% no navegador (`getDisplayMedia` + Spotify Web API + `ffmpeg.wasm`) | Vercel basta |
-| **YouTube** | Backend com `yt-dlp` + `ffmpeg` | Backend separado (Railway/Fly) + UI no Vercel |
+A proposta técnica da migração web → desktop está em
+[`docs/PROPOSTA-DESKTOP.md`](./docs/PROPOSTA-DESKTOP.md).
 
-## Frontend (Vercel)
+## Instalar (usuário final)
+
+Página de download: <https://alexanderaudiotools.vercel.app> (detecta o sistema
+e lista todos os instaladores do último Release). O programa não tem certificado
+pago; os avisos abaixo são esperados na primeira abertura:
+
+- **Windows:** `AlexanderAudioTools-x.y.z-win-x64.exe`. Sem assinatura de código,
+  o SmartScreen avisa: clique em *Mais informações › Executar assim mesmo*.
+- **macOS:** `…-mac-arm64.dmg` (Apple Silicon) ou `…-mac-x64.dmg` (Intel). Com
+  assinatura ad-hoc e sem notarização: abra o app, clique em OK no aviso e vá em
+  *Ajustes do Sistema › Privacidade e Segurança › Abrir Mesmo Assim*. Se o macOS
+  disser que o app “está danificado”, rode no Terminal:
+  ```bash
+  xattr -cr "/Applications/Alexander Audio Tools.app"
+  ```
+- **Linux:** `.AppImage` (qualquer distro; `chmod +x` e execute) ou `.deb`.
+
+No primeiro uso do YouTube, o app baixa o `yt-dlp` oficial (≈35 MB) para a pasta
+de dados do usuário. Ele pode ser atualizado em *Ajustes › Atualizar yt-dlp*.
+
+### Configurar o Spotify (uma vez)
+
+1. Crie um app em <https://developer.spotify.com/dashboard> (marque *Web API*).
+2. Em *Redirect URIs*, cadastre exatamente: `http://127.0.0.1:47816/spotify`
+3. Copie o **Client ID** para *Ajustes › Spotify* no app. Não há client secret.
+
+### Fonte de áudio para gravar o Spotify
+
+- **Windows:** “Áudio do sistema” (loopback), sem configuração.
+- **macOS:** “Áudio do sistema” é experimental. O caminho garantido é instalar o
+  [BlackHole 2ch](https://existential.audio/blackhole/), criar um *Dispositivo de
+  Saída Múltipla* (alto-falantes + BlackHole) e escolher BlackHole no app.
+- **Linux:** escolha o dispositivo “Monitor of …” da sua saída (PulseAudio/PipeWire).
+
+## Desenvolvimento
+
+Requer Node 22.
 
 ```bash
 npm install
-cp .env.example .env.local   # preencha as variáveis
+```
+
+```bash
 npm run dev
 ```
 
-### Variáveis de ambiente
+`npm run dev` sobe o Next em `http://127.0.0.1:47816` e abre o Electron
+apontando para ele (hot reload na UI; reinicie para mudanças em `electron/`).
 
-- `NEXT_PUBLIC_SPOTIFY_CLIENT_ID` — Client ID do app Spotify (fluxo PKCE, sem secret).
-- `NEXT_PUBLIC_YOUTUBE_API_URL` — URL do backend YouTube (deixe vazio para esconder o processamento).
+```bash
+npm run dist
+```
 
-### Deploy no Vercel
+Gera o instalador da plataforma atual em `release/`. Para todas as plataformas,
+use o workflow **Desktop build** (GitHub Actions): manualmente gera artifacts;
+ao enviar uma tag `v*`, publica um Release (com o código-fonte do FFmpeg
+anexado, exigência da GPL), que a página de download passa a mostrar.
 
-1. Conecte este repositório no Vercel (framework detectado: Next.js).
-2. Defina as variáveis de ambiente acima.
-3. No app Spotify (developer.spotify.com), adicione a Redirect URI:
-   `https://SEU-APP.vercel.app/spotify`
+Os downloads anônimos exigem que os Releases estejam num repositório
+**público**. Se o código continuar privado, crie um repositório público só para
+os instaladores e configure no repositório de código:
+- variável `RELEASES_REPO` (ex.: `isaac-pipcode/alexanderaudiotools-releases`);
+- secret `RELEASES_TOKEN` (token fine-grained com *Contents: read and write* no repositório público);
+- no Vercel, a variável `NEXT_PUBLIC_RELEASES_REPO` com o mesmo valor.
 
-## Backend YouTube
+### Página de download (Vercel)
 
-Veja [`backend/README.md`](./backend/README.md). Não roda no Vercel.
+A raiz `/` do export do Next é a página pública de download; `/app` é a interface
+do programa (só funciona dentro do Electron). O `vercel.json` instala sem scripts
+de pós-instalação (não baixa Electron nem ffmpeg) e roda só `next build`.
 
-## Como funciona a aba Spotify
+### Estrutura
 
-1. Login no Spotify via PKCE (sem expor secret).
-2. O navegador captura o áudio da aba/tela via `getDisplayMedia`.
-3. A Web API detecta a faixa atual; a cada troca, fecha um arquivo e abre outro.
-4. Conversão para MP3 320k com metadados via `ffmpeg.wasm`, tudo client-side.
+```
+app/                 UI (Next.js, exportada como estático em out/)
+  page.tsx           página pública de download (/)
+  app/page.tsx       interface do programa (/app)
+  components/        painéis de cada aba + JobView/Shell/SettingsPanel
+  lib/desktop.ts     tipos da ponte window.aat
+  lib/useJob.ts      hook de jobs (progresso via IPC)
+electron/            processo principal (TypeScript → dist-electron/)
+  main.ts            janela, servidor local 127.0.0.1:47816, IPC, captura de áudio
+  preload.ts         ponte segura (contextBridge)
+  youtube.ts         motor de download/corte (port do antigo backend/splitter.py)
+  recorder.ts        finalização das gravações do Spotify
+  binaries.ts        ffmpeg empacotado, yt-dlp baixado/atualizado, runtime JS
+  settings.ts        preferências em JSON no userData
+```
 
-> Funciona melhor no **Chrome/Edge** (captura de áudio de aba). Firefox/Safari têm
-> suporte limitado. Para uso pessoal/educacional — respeite os ToS e direitos autorais.
+## Aviso
+
+Para uso pessoal/educacional. Respeite os direitos autorais e os Termos de
+Serviço do Spotify e do YouTube.
